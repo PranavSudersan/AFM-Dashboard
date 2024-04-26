@@ -100,11 +100,13 @@ def wsxm_readimg(file, header_dict, pos):
 # Read WSxM channel image data
 def wsxm_readchan(filepath):
     filepath_all = wsxm_get_common_files(filepath)
-    print(filepath_all)
     data_dict = {}
+    file_num = 1 #file number
     for path in filepath_all:
         path_ext = os.path.splitext(path)[1] #file extension
         if path_ext != 'gsi': #ignore *.gsi files sharing same name
+            print(file_num, os.path.basename(path))
+            file_num += 1
             file = open(f'{path}','rb')
             header_dict, pos = wsxm_readheader(file)
             chan_label = header_dict['Acquisition channel']
@@ -124,9 +126,12 @@ def wsxm_readchan(filepath):
 def wsxm_readcurves(filepath):
     filepath_all = wsxm_get_common_files(filepath)
     data_dict = {}
+    file_num = 1 #file number
     for path in filepath_all:
         path_ext = os.path.splitext(path)[1] #file extension
         if path_ext == '.curves': # read *.curves spectroscopy files
+            print(file_num, os.path.basename(path))
+            file_num += 1
             file = open(f'{path}','rb')
             header_dict, pos = wsxm_readheader(file)
             data_dict_chan, pos = wsxm_readimg(file, header_dict, pos) 
@@ -189,9 +194,12 @@ def wsxm_readcurves(filepath):
 def wsxm_readstp(filepath):
     filepath_all = wsxm_get_common_files(filepath)
     data_dict = {}
+    file_num = 1 #file number
     for path in filepath_all:
         path_ext = os.path.splitext(path)[1] #file extension
         if path_ext == '.stp': # read *.stp spectroscopy files
+            print(file_num, os.path.basename(path))
+            file_num += 1
             file = open(f'{path}','rb')
             filename = os.path.basename(path)
             header_dict, pos = wsxm_readheader(file)
@@ -246,11 +254,14 @@ def wsxm_readstp(filepath):
 def wsxm_readforcevol(filepath):
     filepath_all = wsxm_get_common_files(filepath)
     data_dict = {}
+    file_num = 1 #file number
     for path in filepath_all:
         path_ext = os.path.splitext(path)[1] #file extension
         # if path_ext == '.top': #topgraphy data
         #     data_dict['Topography'] = wsxm_readchan(path)
         if path_ext == '.gsi': #force volume data from *.gsi files
+            print(file_num, os.path.basename(path))
+            file_num += 1
             file = open(f'{path}','rb')
             header_dict, pos = wsxm_readheader(file)
             
