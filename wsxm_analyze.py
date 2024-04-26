@@ -26,7 +26,7 @@ def func_stiffness(force_data, bad_pts):
     segment = 'approach'
     idx_min = np.argmin(force_data[segment]['y'])
     if idx_min == force_data[segment]['x'].shape[0]-1: #when spectra not good
-        return np.inf, {'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
+        return 0, {'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
     else:
         p, res, rank, sing, rcond = np.polyfit(force_data[segment]['x'][idx_min:], 
                                                force_data[segment]['y'][idx_min:], 1, full=True)
