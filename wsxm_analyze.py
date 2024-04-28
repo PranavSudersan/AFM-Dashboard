@@ -80,13 +80,15 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
     spectro_data = {}
     for key in img_keys:
         spectro_dir = SPECT_DICT[key.split(' ')[3]]
+        x_pt = np.argmin(abs(data[channel][key]['data']['X']-x))
+        y_pt = np.argmin(abs(data[channel][key]['data']['Y']-y))
         # if segment != 'both' and segment != spectro_dir: #skip unwanted segment
         #     continue
         # line_pts = int(data[channel][key]['header']['Number of points per ramp'])
         # data_fd_dict['x'] = np.append(data_fd_dict['x'], data[channel][key]['data']['Z'])
         # data_fd_dict['y'] = np.append(data_fd_dict['y'], data[channel][key]['data']['ZZ'][:,y,x])
         # data_fd_dict['segment'] = np.append(data_fd_dict['segment'], line_pts*[spectro_dir])
-        spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y,x],
+        spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y_pt,x_pt],
                                      'x': data[channel][key]['data']['Z']}
     # data_fd = pd.DataFrame.from_dict(data_fd_dict)
     # #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
@@ -199,12 +201,25 @@ def get_imgdata(data_dict_chan, style = 'XY', x=0, y=0, z=0):
     data_mat = np.meshgrid(data0, data1)
     if 'ZZ' in data_dict_chan['data'].keys(): #for force volume data
         if style == 'XY':
-            img_data = data_dict_chan['data']['ZZ'][z,:,:] #1st index:xy sections, 2nd index:xz sections, 3rd index: yz sections
+            z_pt = np.argmin(abs(data_dict_chan['data']['Z']-z))
+            img_data = data_dict_chan['data']['ZZ'][z_pt,:,:] #1st index:xy sections, 2nd index:xz sections, 3rd index: yz sections
         elif style == 'XZ':
-            img_data = data_dict_chan['data']['ZZ'][:,y,:]
+            y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
+            img_data = data_dict_chan['data']['ZZ'][:,y_pt,:]
         elif style == 'YZ':
-            img_data = data_dict_chan['data']['ZZ'][:,:,x]
+            x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
+            img_data = data_dict_chan['data']['ZZ'][:,:,x_pt]
     else: #for usual image data
         img_data = data_dict_chan['data']['Z']
     data_mat.append(img_data)
     return data_mat[0], data_mat[1], data_mat[2]
+
+#get data at a specific line of an image. x=vertical line, y=horizontal line
+def get_imgline(data_dict_chan, x=None, y=None):
+    if x != None:
+        x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
+        return data_dict_chan['data']['Y'], data_dict_chan['data']['Z'][:,x_pt]
+    if y != None:
+        y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
+        return data_dict_chan['data']['X'], data_dict_chan['data']['Z'][y_pt,:]
+        
