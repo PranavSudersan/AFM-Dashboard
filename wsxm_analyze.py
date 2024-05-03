@@ -223,3 +223,89 @@ def get_imgline(data_dict_chan, x=None, y=None):
         y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
         return data_dict_chan['data']['X'], data_dict_chan['data']['Z'][y_pt,:]
         
+
+
+#calibration functions
+
+def get_psd_calib(data_dict):
+    # im_data, head_data = read_wsxm_chan(filepath)
+    plt.close()
+    # im_data = data_dict['data']
+    head_data = data_dict['header']
+    # print(head_data)
+    #plot AFM Z image
+    # xx = im_data['X'].reshape(128,128)
+    # yy = im_data['Y'].reshape(128,128)
+    # zz = im_data['Z']#.reshape(128,128)
+    xx, yy, zz = get_imgdata(data_dict)
+    plt.pcolormesh(xx,yy,zz, cmap='afmhot')    
+    plt.colorbar()
+    fig = fig2html(plt.gcf())
+    plt.close()
+    # plt.show()
+    
+    #Obtain Power Spectral Density of data
+    #sample_rate = 2*num_pts*float(head_data['X-Frequency'].split(' ')[0])
+    sample_rate = float(head_data['Sampling frequency'].split(' ')[0])
+    freq_array, z_pow = signal.periodogram(zz, sample_rate, scaling='density') #power spectral density
+    z_pow_avg = np.average(z_pow, axis=0) #averaged
+    z_pow_max = z_pow_avg.max()
+    freq_drive = float(head_data['Resonance frequency'].split(' ')[0])
+    freq_array_shifted = freq_array + freq_drive
+    # plt.plot(freq_array, z_pow_avg)
+    # plt.show()
+
+    z = zz.flatten()
+    z_rms = np.sqrt(z.dot(z)/z.size)
+    # print(zz.min(), zz.max(), z_rms)
+    return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
+
+
+#Lorentzian fit
+# y0 = white noise offset, f0 = resonance freq, w = Full width at half maximum, A = area
+def lorentzian(f, y0,f0, w, A):
+    return y0 + ((2*A/np.pi) * (w / ( w**2 + 4*( f - f0 )**2)))
+
+
+def get_calib(df_on, df_off, ind):
+    freq_final = df_on['frequency'].iloc[ind]
+    psd_final = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
+    plt.plot(freq_final, psd_final)
+    plt.plot(freq_final, df_on['psd'].iloc[ind])
+    plt.plot(freq_final, df_off['psd'].iloc[ind])
+    #plt.show()
+    
+    #guess = [0, 76000, 2000, 100000]
+    y_guess = 0 #psd_final.min()
+    f_guess = freq_final[psd_final.argmax()]
+    w_guess = 2*np.abs(freq_final[(np.abs(psd_final - psd_final.max()/2)).argmin()]-f_guess)
+    A_guess = np.pi*w_guess*psd_final.max()/2
+    guess = [y_guess, f_guess, w_guess, A_guess] #y0,f0,w,A
+    # print(guess)
+    #fit
+    popt, pcov = curve_fit(lorentzian, freq_final,psd_final,
+                        p0=guess, bounds=(0,np.inf))
+    #print(np.linalg.cond(pcov))
+    params = ['offset','resonance freq', 'fwhm', 'area']
+    fit_dict = dict(zip(params, popt))
+    fit_dict['Q factor'] = fit_dict['resonance freq']/fit_dict['fwhm']
+    
+    #plot fit
+    f_min, f_max = freq_final.min(), freq_final.max()
+    f_ext = 0.1*(f_max-f_min)
+    freq_fit_range = np.linspace(f_min-f_ext, f_max+f_ext, 100000)
+    plt.plot(freq_fit_range,lorentzian(freq_fit_range, *popt))
+    fig = fig2html(plt.gcf())
+    plt.close()
+    
+    # print(fit_dict)
+
+    Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
+    k_cant = 2 # N/m
+    T = 300 #K
+    kb = 1.380649e-23 #J/K
+    V_rms = np.sqrt(fit_dict['area'])
+    corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
+    sens = np.sqrt(corr_fac*kb*T/k_cant)/V_rms/1e-9 #nm/V 
+
+    return sens, k_cant, Q, V_rms, fig
