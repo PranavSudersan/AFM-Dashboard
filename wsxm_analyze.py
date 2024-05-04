@@ -3,11 +3,13 @@ import pandas as pd
 from scipy.optimize import curve_fit
 from scipy import signal
 import scipy.ndimage as ndimage
+import matplotlib.pyplot as plt
+import io, base64
 
 def func_adhesion(force_data, zero_pts):
     f_zero = force_data['approach']['y'][:zero_pts].mean()
     f_min = force_data['retract']['y'].min()
-    return f_zero - f_min, {'zero': f_zero, 'min': f_min}
+    return {'value': f_zero - f_min, 'zero': f_zero, 'min': f_min}
 
 def func_snapin(defl_data, zero_pts): #CHECK ALGORITHM!
     segment = 'approach'
@@ -20,37 +22,45 @@ def func_snapin(defl_data, zero_pts): #CHECK ALGORITHM!
     defl_zero = defl_data[segment]['y'][:zero_pts].mean()
     # z_min = defl_data['approach']['x'][defl_idx_min]
     # print(idx_min)
-    return defl_zero - defl_min, {'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
+    return {'value': defl_zero - defl_min, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
 def func_stiffness(force_data, bad_pts):
     segment = 'approach'
     idx_min = np.argmin(force_data[segment]['y'])
     if idx_min == force_data[segment]['x'].shape[0]-1: #when spectra not good
-        return 0, {'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
+        return {'value': 0, 'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
     else:
         p, res, rank, sing, rcond = np.polyfit(force_data[segment]['x'][idx_min:], 
                                                force_data[segment]['y'][idx_min:], 1, full=True)
         poly = np.poly1d(p)
         fit_data = {'x': force_data[segment]['x'][idx_min:], 'y': poly(force_data[segment]['x'][idx_min:])}
-    return -p[0], fit_data
+        return {'value': -p[0], 'x': fit_data['x'], 'y': fit_data['y']}
+
+#slope of amplitude change during fd spectroscopy
+def func_ampslope(amp_data, range_factor):
+    segment = 'approach'
+    amp_sobel = ndimage.sobel(amp_data[segment]['y']) #sobel transform
+    ind_max = np.argmax(amp_sobel)
+    sobel_min, sobel_max = amp_sobel.min(), amp_sobel.max()
+    #find range around sobel max to get fit range
+    mid_sobel = sobel_min+(sobel_max-sobel_min)*range_factor
+    ind_mid1 = np.argmin(abs(amp_sobel-mid_sobel))
+    ind_diff = abs(ind_max-ind_mid1)
+    ind_mid2 = ind_max + ind_diff if ind_mid1<ind_max else ind_max - ind_diff 
+    ind_range = [min([ind_mid1, ind_mid2]), max([ind_mid1, ind_mid2])] #indices ordered from small to big
+    if ind_range[0] < 0 or ind_range[1] > len(amp_data[segment]['x'])-1:
+        return {'value': 0, 'x': [], 'y': []}
+    else:
+        p, res, rank, sing, rcond = np.polyfit(amp_data[segment]['x'][ind_range[0]:ind_range[1]],
+                                               amp_data[segment]['y'][ind_range[0]:ind_range[1]], 1, full=True)
+        poly = np.poly1d(p)
+        fit_data = {'x': amp_data[segment]['x'][ind_range[0]:ind_range[1]], 'y': poly(amp_data[segment]['x'][ind_range[0]:ind_range[1]])}
+        return {'value': -p[0], 'x': fit_data['x'], 'y': fit_data['y']}
+
 
 #TODO: calibration dictionary to get in nm or nN from volts
 
 #dictionary of functions defined to extract spectroscopy data properties
-# FUNC_DICT = {'Adhesion': {'function':func_adhesion,
-#                           'channel': 'Normal force',
-#                           'kwargs': {'zero_pts': 10
-#                                     }
-#                          },
-#              'Stiffness': {'function':func_stiffness,
-#                            'channel': 'Normal force',
-#                            'kwargs': {'bad_pts':1}
-#                            },
-#              'Snap-in distance': {'function':func_snapin,
-#                                   'channel': 'Normal force',
-#                                   'kwargs': {}
-#                                   },
-#              }
 
 FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
                                            'kwargs': {'zero_pts': 10}
@@ -62,7 +72,10 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
                                                    'kwargs': {'zero_pts': 10}
                                                    }
                               },
-             'Amplitude': {},
+             'Amplitude': {'Slope-amp':{'function':func_ampslope,
+                                        'kwargs': {'range_factor': 0.6}
+                                        }
+                          },
              'Excitation frequency': {},
              'Phase': {}
             }
@@ -109,7 +122,7 @@ def wsxm_calcspectroparam(spectro_data, channel):
     for param in FUNC_DICT[channel].keys():
         # if channel == FUNC_DICT[param]['channel']:
         kwargs = FUNC_DICT[channel][param]['kwargs']
-        _, data_dict_param[param] = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
+        data_dict_param[param] = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
         
     return df_spec, data_dict_param
 
@@ -186,8 +199,9 @@ def calc_spectro_prop(data, channel, img_dir):
                                 spectro_dir = SPECT_DICT[key.split(' ')[3]]
                                 spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y,x],
                                                              'x': data[channel][key]['data']['Z']}
-                            param_result,_ = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
-                            data_dict_param[param][img_dir]['data']['Z'] = np.append(data_dict_param[param][img_dir]['data']['Z'], [param_result])
+                            param_result = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
+                            data_dict_param[param][img_dir]['data']['Z'] = np.append(data_dict_param[param][img_dir]['data']['Z'], 
+                                                                                     [param_result['value']])
                 # data_dict_spectro[spectro_dir] = adh_data.reshape(x_pts,y_pts)
     for param in data_dict_param.keys():
         for img_dir in data_dict_param[param].keys():
@@ -224,12 +238,25 @@ def get_imgline(data_dict_chan, x=None, y=None):
         return data_dict_chan['data']['X'], data_dict_chan['data']['Z'][y_pt,:]
         
 
+#convert matplotlib plot to html for Jupyter display
+def fig2html(fig, size=200):
+    # Save the plot as binary data
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    buf.seek(0)    
+    # Convert the binary data to base64
+    image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
+    # Create an HTML image tag
+    # '<img src="data:image/png;base64,{}"/>'.format(fig)
+    image_tag = f'<img src="data:image/png;base64,{image_base64}" width="{size}" height="{size}"/>'
+    return image_tag
+
 
 #calibration functions
 
 def get_psd_calib(data_dict):
     # im_data, head_data = read_wsxm_chan(filepath)
-    plt.close()
+    # plt.close()
     # im_data = data_dict['data']
     head_data = data_dict['header']
     # print(head_data)
