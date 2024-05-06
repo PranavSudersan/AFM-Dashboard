@@ -622,8 +622,9 @@ def wsxm_collect_files(folderpath, refresh=False):
                         plt.close()
                 else: #if no match for 4 digit counter found in file name
                     if path_ext_i == '.cur': #read other *.cur file e.g. tuning
+                        filename_com_i = filename_i[:-4]
                         data_type_i = '1D'
-                        channel_i = filename_i[:-4]
+                        channel_i = 'Other'
                         data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
                         header_i = data_dict_chan_i['header']
                         res_i = header_i['Number of points']
