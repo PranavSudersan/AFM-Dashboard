@@ -61,19 +61,24 @@ def func_ampslope(amp_data, range_factor):
 #TODO: calibration dictionary to get in nm or nN from volts
 
 #dictionary of functions defined to extract spectroscopy data properties
-
+#if function outputs other than 'value' is 'x', 'y', set plot type to 'line' below, else, set plot type to
+#however it needs to be plotted as a dictionary for each additional output.
 FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
-                                           'kwargs': {'zero_pts': 10}
+                                           'kwargs': {'zero_pts': 10},
+                                           'plot type': {'zero':'hline', 'min':'hline'}
                                            },
                               'Stiffness': {'function':func_stiffness,
-                                            'kwargs': {'bad_pts':1}
+                                            'kwargs': {'bad_pts':1},
+                                            'plot type': 'line'
                                             },
                               'Snap-in distance': {'function':func_snapin,
-                                                   'kwargs': {'zero_pts': 10}
+                                                   'kwargs': {'zero_pts': 10},
+                                                   'plot type': 'line'
                                                    }
                               },
              'Amplitude': {'Slope-amp':{'function':func_ampslope,
-                                        'kwargs': {'range_factor': 0.6}
+                                        'kwargs': {'range_factor': 0.6},
+                                        'plot type': 'line'
                                         }
                           },
              'Excitation frequency': {},
