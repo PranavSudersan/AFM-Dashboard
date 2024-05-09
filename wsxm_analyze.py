@@ -4,7 +4,7 @@ from scipy.optimize import curve_fit
 from scipy import signal
 import scipy.ndimage as ndimage
 import matplotlib.pyplot as plt
-import io, base64
+import io, base64, copy
 
 def func_adhesion(force_data, zero_pts):
     f_zero = force_data['approach']['y'][:zero_pts].mean()
@@ -58,11 +58,15 @@ def func_ampslope(amp_data, range_factor):
         return {'value': -p[0], 'x': fit_data['x'], 'y': fit_data['y']}
 
 
+
 #TODO: calibration dictionary to get in nm or nN from volts
+
+global FUNC_DICT, CALIB_DICT, SPECT_DICT #CHECK THIS! TODO!
 
 #dictionary of functions defined to extract spectroscopy data properties
 #if function outputs other than 'value' is 'x', 'y', set plot type to 'line' below, else, set plot type to
 #however it needs to be plotted as a dictionary for each additional output.
+#TODO unit calibation add here also where necessary
 FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
                                            'kwargs': {'zero_pts': 10},
                                            'plot type': {'zero':'hline', 'min':'hline'}
@@ -84,6 +88,20 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
              'Excitation frequency': {},
              'Phase': {}
             }
+
+# calibration dictionary for each channel. ADD MORE CHANNELS!
+CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0}, 
+                               'nm': {'factor':1, 'offset':0},
+                               'nN':{'factor':1, 'offset':0}
+                              },
+              'Amplitude': {'V': {'factor':1, 'offset':0},
+                            'nm': {'factor':1, 'offset':0},
+                           },
+              'Excitation frequency': {'V': {'factor':1, 'offset':0}
+                                       },
+              'Phase': {'V': {'factor':1, 'offset':0}
+                        }
+             }
 
 #rename spectroscopy line to standard names: approach and retract
 SPECT_DICT = {'Forward':'approach', 'Backward': 'retract'} 
@@ -119,15 +137,20 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
     return spectro_data
 
 # Convert spectroscopy data dictionary to dataframe for plotting and calculate parameter
-def wsxm_calcspectroparam(spectro_data, channel):
+def wsxm_calcspectroparam(spectro_data, channel, unit):
     #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # spectro_data = data[channel]['curves'][curv_num]['data']
-    df_spec = convert_spectro2df(spectro_data) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
+    spectro_data_cali = copy.deepcopy(spectro_data)
+    for key in spectro_data_cali.keys(): #calibrate
+        spectro_data_cali[key]['y'] = (CALIB_DICT[channel][unit]['factor']*spectro_data_cali[key]['y']) + CALIB_DICT[channel][unit]['offset'] 
+    df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
+    # print(channel, unit, CALIB_DICT[channel][unit])
+    # df_spec['y'] = (CALIB_DICT[channel][unit]['factor']*df_spec['y']) + CALIB_DICT[channel][unit]['offset'] #calibrate
     data_dict_param = {}
     for param in FUNC_DICT[channel].keys():
         # if channel == FUNC_DICT[param]['channel']:
         kwargs = FUNC_DICT[channel][param]['kwargs']
-        data_dict_param[param] = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
+        data_dict_param[param] = FUNC_DICT[channel][param]['function'](spectro_data_cali, **kwargs)
         
     return df_spec, data_dict_param
 
