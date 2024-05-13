@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 import io, base64, copy
 
 def func_adhesion(force_data, zero_pts):
+    segment = 'retract'
     f_zero = force_data['approach']['y'][:zero_pts].mean()
-    f_min = force_data['retract']['y'].min()
-    return {'value': f_zero - f_min, 'zero': f_zero, 'min': f_min}
+    f_min = force_data[segment]['y'].min()
+    return {'value': f_zero - f_min, 'segment': segment, 'zero': f_zero, 'min': f_min}
 
 def func_snapin(defl_data, zero_pts): #CHECK ALGORITHM!
     segment = 'approach'
@@ -22,19 +23,19 @@ def func_snapin(defl_data, zero_pts): #CHECK ALGORITHM!
     defl_zero = defl_data[segment]['y'][:zero_pts].mean()
     # z_min = defl_data['approach']['x'][defl_idx_min]
     # print(idx_min)
-    return {'value': defl_zero - defl_min, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
+    return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
 def func_stiffness(force_data, bad_pts):
     segment = 'approach'
     idx_min = np.argmin(force_data[segment]['y'])
     if idx_min == force_data[segment]['x'].shape[0]-1: #when spectra not good
-        return {'value': 0, 'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
+        return {'value': 0, 'segment': segment, 'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
     else:
         p, res, rank, sing, rcond = np.polyfit(force_data[segment]['x'][idx_min:], 
                                                force_data[segment]['y'][idx_min:], 1, full=True)
         poly = np.poly1d(p)
         fit_data = {'x': force_data[segment]['x'][idx_min:], 'y': poly(force_data[segment]['x'][idx_min:])}
-        return {'value': -p[0], 'x': fit_data['x'], 'y': fit_data['y']}
+        return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
 
 #slope of amplitude change during fd spectroscopy
 def func_ampslope(amp_data, range_factor):
@@ -49,13 +50,13 @@ def func_ampslope(amp_data, range_factor):
     ind_mid2 = ind_max + ind_diff if ind_mid1<ind_max else ind_max - ind_diff 
     ind_range = [min([ind_mid1, ind_mid2]), max([ind_mid1, ind_mid2])] #indices ordered from small to big
     if ind_range[0] < 0 or ind_range[1] > len(amp_data[segment]['x'])-1:
-        return {'value': 0, 'x': [], 'y': []}
+        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
     else:
         p, res, rank, sing, rcond = np.polyfit(amp_data[segment]['x'][ind_range[0]:ind_range[1]],
                                                amp_data[segment]['y'][ind_range[0]:ind_range[1]], 1, full=True)
         poly = np.poly1d(p)
         fit_data = {'x': amp_data[segment]['x'][ind_range[0]:ind_range[1]], 'y': poly(amp_data[segment]['x'][ind_range[0]:ind_range[1]])}
-        return {'value': -p[0], 'x': fit_data['x'], 'y': fit_data['y']}
+        return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
 
 
 
@@ -97,7 +98,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
               'Amplitude': {'V': {'factor':1, 'offset':0},
                             'nm': {'factor':1, 'offset':0},
                            },
-              'Excitation frequency': {'V': {'factor':1, 'offset':0}
+              'Excitation frequency': {'V': {'factor':1, 'offset':0},
+                                       'Hz': {'factor':1, 'offset':0}
                                        },
               'Phase': {'V': {'factor':1, 'offset':0}
                         }
@@ -270,7 +272,7 @@ def get_imgline(data_dict_chan, x=None, y=None):
 def fig2html(fig, size=200):
     # Save the plot as binary data
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=300)
     buf.seek(0)    
     # Convert the binary data to base64
     image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
