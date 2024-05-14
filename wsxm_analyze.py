@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.optimize import curve_fit
 from scipy import signal
 import scipy.ndimage as ndimage
+from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import io, base64, copy
 
@@ -41,21 +42,31 @@ def func_stiffness(force_data, bad_pts):
 def func_ampslope(amp_data, range_factor):
     segment = 'approach'
     amp_sobel = ndimage.sobel(amp_data[segment]['y']) #sobel transform
-    ind_max = np.argmax(amp_sobel)
-    sobel_min, sobel_max = amp_sobel.min(), amp_sobel.max()
-    #find range around sobel max to get fit range
-    mid_sobel = sobel_min+(sobel_max-sobel_min)*range_factor
-    ind_mid1 = np.argmin(abs(amp_sobel-mid_sobel))
-    ind_diff = abs(ind_max-ind_mid1)
-    ind_mid2 = ind_max + ind_diff if ind_mid1<ind_max else ind_max - ind_diff 
-    ind_range = [min([ind_mid1, ind_mid2]), max([ind_mid1, ind_mid2])] #indices ordered from small to big
-    if ind_range[0] < 0 or ind_range[1] > len(amp_data[segment]['x'])-1:
+    # ind_max = np.argmax(amp_sobel)
+    # sobel_min, sobel_max = amp_sobel.min(), amp_sobel.max()
+    # #find range around sobel max to get fit range
+    # mid_sobel = sobel_min+(sobel_max-sobel_min)*range_factor
+    # ind_mid1 = np.argmin(abs(amp_sobel-mid_sobel))
+    # ind_diff = abs(ind_max-ind_mid1)
+    # ind_mid2 = ind_max + ind_diff if ind_mid1<ind_max else ind_max - ind_diff 
+    # ind_range = [min([ind_mid1, ind_mid2]), max([ind_mid1, ind_mid2])] #indices ordered from small to big
+
+    kmeans = KMeans(n_clusters=2) # Create a KMeans instance with 2 clusters: kmeans
+    kmeans.fit(amp_sobel.reshape(-1, 1)) 
+    centroids = kmeans.cluster_centers_
+    low_cluster, high_cluster = (0, 1) if centroids[0] < centroids[1] else (1, 0) #Get higher value clusters
+    labels = kmeans.labels_
+    high_cluster_data = amp_sobel[labels == high_cluster]
+    high_cluster_indices = np.where(labels.reshape(amp_sobel.shape) == high_cluster)[0]
+
+    # if ind_range[0] < 0 or ind_range[1] > len(amp_data[segment]['x'])-1:
+    if len(high_cluster_indices) <= 2: #ignore small clusters
         return {'value': 0, 'segment': segment, 'x': [], 'y': []}
     else:
-        p, res, rank, sing, rcond = np.polyfit(amp_data[segment]['x'][ind_range[0]:ind_range[1]],
-                                               amp_data[segment]['y'][ind_range[0]:ind_range[1]], 1, full=True)
+        p, res, rank, sing, rcond = np.polyfit(amp_data[segment]['x'][high_cluster_indices],
+                                               amp_data[segment]['y'][high_cluster_indices], 1, full=True)
         poly = np.poly1d(p)
-        fit_data = {'x': amp_data[segment]['x'][ind_range[0]:ind_range[1]], 'y': poly(amp_data[segment]['x'][ind_range[0]:ind_range[1]])}
+        fit_data = {'x': amp_data[segment]['x'][high_cluster_indices], 'y': poly(amp_data[segment]['x'][high_cluster_indices])}
         return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
 
 
