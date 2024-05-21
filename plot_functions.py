@@ -6,11 +6,16 @@ import numpy as np
 # create plot with multiple secondary y axes, grouped by data columns specified in line_group, symbol and line_dash   
 # secondary y axis created based on values populated in multiy_col column of data. yvars list can be used to limit the number of
 #secondary y axis created. x, y, line_group, symbol, hover_name and line_dash are passed to px.line (check plotly documentation for that)
+#data must be in "long form", i.e. names to be made into y axis must be inside "multiy_col" column and its corresponding values
+#must be in "y" column. "x" column must contain the common data to be plotted in x axis. Use pandas.melt to convert to long form.
 def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
                       line_group=None, symbol=None, line_dash=None, hover_name=None):
     color_list = ['blue', 'red', 'green', 'purple']
     font_dict=dict(family='Arial', size=22, color='black')
     
+    if yax_dict == None:
+        yax_dict = {}
+
     if fig == None:
         fig = go.FigureWidget()
         fig.update_layout(font=font_dict,  # font formatting
@@ -18,9 +23,7 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
                           height=500, width=1100, title_text="",
                           margin=dict(t=50, b=0, l=0, r=0),
                           showlegend=False)
-    
-    if yax_dict == None:
-        yax_dict = {}
+        plotly_multiyplot_initax(fig, yvars, yax_dict)
         
     yvars_old = list(yax_dict.keys())
   
