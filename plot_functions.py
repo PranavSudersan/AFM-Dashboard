@@ -1,7 +1,24 @@
 import plotly.graph_objects as go
 import plotly.subplots as sp
 import plotly.express as px
+import matplotlib
 import numpy as np
+import io, base64
+
+#convert matplotlib colormaps to plotly format
+def matplotlib_to_plotly(cmap_name, num=255):
+    cmap = matplotlib.cm.get_cmap(cmap_name)
+    h = 1.0/(num-1)
+    pl_colorscale = []
+
+    for k in range(num):
+        C = list(map(np.uint8, np.array(cmap(k*h)[:3])*255))
+        pl_colorscale.append([k*h, 'rgb'+str((C[0], C[1], C[2]))])
+
+    return pl_colorscale
+
+#initialize default colourmap "afmhot"
+cm_afmhot = matplotlib_to_plotly('afmhot', 255)
 
 # create plot with multiple secondary y axes, grouped by data columns specified in line_group, symbol and line_dash   
 # secondary y axis created based on values populated in multiy_col column of data. yvars list can be used to limit the number of
@@ -257,3 +274,105 @@ def plotly_pairplot_initax(fig, num):
                                                         showticklabels=False, # Hide tick labels
                                                         title=''
                                                     )})
+
+#line plot x vs y grouped by color column of dataframe data.
+def plotly_lineplot(data, x, y, color, height=400, width=500):    
+    fig = px.line(data, x=x, y=y, color=color)
+    
+    font_dict=dict(family='Arial',size=16,color='black')
+    fig.update_xaxes(showline=True,
+                     linecolor='black',
+                     linewidth=1,
+                     ticks='outside',
+                     tickfont=font_dict,
+                     title_font=font_dict,
+                     tickwidth=1,
+                     tickcolor='black')
+    fig.update_yaxes(showline=True,
+                     linecolor='black',
+                     linewidth=1,
+                     ticks='outside',
+                     tickfont=font_dict,
+                     title_font=font_dict,
+                     tickwidth=1,
+                     tickcolor='black')
+    fig.update_layout(font=font_dict,
+                      autosize=False,
+                      height=height, 
+                      width=width,
+                      legend=dict(font=font_dict,
+                                  yanchor="top",
+                                  y=0.99,
+                                  xanchor="right",
+                                  x=1.01),
+                      plot_bgcolor="white",
+                      margin=dict(t=0,l=0,b=0,r=0))
+    return fig
+
+#plot heat map. here x,y are 1d arrays and z is 2d matrix array
+def plotly_heatmap(x, y, z_mat, color=cm_afmhot, style='full', height=400, width=400):
+    fig = go.Figure(data=go.Heatmap(
+                       z=z_mat,
+                       x=x,
+                       y=y,
+                       type = 'heatmap',
+                        colorscale =color))
+
+    font_dict=dict(family='Arial',size=16,color='black')
+    
+    if style == 'clean':
+        fig.update_traces(showscale=False)
+        fig.update_xaxes(showticklabels=False)
+        fig.update_yaxes(showticklabels=False)
+        fig.update_layout(font=font_dict,
+                          autosize=False,
+                          height=height, 
+                          width=width,
+                          margin=dict(t=0,l=0,b=0,r=0))
+    elif style == 'full':
+        fig.update_traces(showscale=True)
+        font_dict=dict(family='Arial',size=16,color='black')
+        fig.update_xaxes(showline=True,
+                         linecolor='black',
+                         linewidth=1,
+                         ticks='outside',
+                         tickfont=font_dict,
+                         title_font=font_dict,
+                         tickwidth=1,
+                         tickcolor='black',
+                        showticklabels=True)
+        fig.update_yaxes(showline=True,
+                         linecolor='black',
+                         linewidth=1,
+                         ticks='outside',
+                         tickfont=font_dict,
+                         title_font=font_dict,
+                         tickwidth=1,
+                         tickcolor='black',
+                        showticklabels=True)
+        fig.update_layout(font=font_dict,
+                          autosize=False,
+                          height=400, 
+                          width=1.2*400,
+                          plot_bgcolor="white",
+                          margin=dict(t=10,l=10,b=10,r=10))
+    return fig
+
+#convert matplotlib/plot plot to html for Jupyter display
+def fig2html(fig, plot_type, size=200):
+    # Save the plot as binary data
+    if plot_type == 'matplotlib':
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=300)
+        buf.seek(0)
+        image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
+    elif plot_type == 'plotly':
+        # buf = fig.to_image(width=size, height=size)
+        image_base64 = base64.b64encode(fig.to_image()).decode('ascii')
+        
+    # Convert the binary data to base64
+    # image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
+    # Create an HTML image tag
+    # '<img src="data:image/png;base64,{}"/>'.format(fig)
+    image_tag = f'<img src="data:image/png;base64,{image_base64}" width="{size}" height="{size}"/>'
+    return image_tag

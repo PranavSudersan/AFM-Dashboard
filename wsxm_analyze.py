@@ -5,7 +5,7 @@ from scipy import signal
 import scipy.ndimage as ndimage
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
-import io, base64, copy
+import copy
 
 def func_adhesion(force_data, zero_pts):
     segment = 'retract'
@@ -278,20 +278,6 @@ def get_imgline(data_dict_chan, x=None, y=None):
         y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
         return data_dict_chan['data']['X'], data_dict_chan['data']['Z'][y_pt,:]
         
-
-#convert matplotlib plot to html for Jupyter display
-def fig2html(fig, size=200):
-    # Save the plot as binary data
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=300)
-    buf.seek(0)    
-    # Convert the binary data to base64
-    image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
-    # Create an HTML image tag
-    # '<img src="data:image/png;base64,{}"/>'.format(fig)
-    image_tag = f'<img src="data:image/png;base64,{image_base64}" width="{size}" height="{size}"/>'
-    return image_tag
-
 
 #calibration functions
 

@@ -6,7 +6,8 @@ import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from wsxm_analyze import convert_spectro2df, get_imgdata, fig2html
+from wsxm_analyze import convert_spectro2df, get_imgdata
+from plot_functions import plotly_lineplot, plotly_heatmap, fig2html
 
 DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
@@ -51,13 +52,16 @@ def wsxm_readheader(file, pos=0, inibyte=100):
                 header_size = int(hd_lst[1])
                 # print(header_size)
                 break
-    # read header data
+    # read header data (NOTE THAT DUPLICATE HEADER NAMES (example P,I values) WILL BE SKIPPED!
     file.seek(pos, 0)
     data = file.read(header_size)#[:header_size]
     for ln in data.splitlines():
         hd_lst = ln.decode('latin-1', errors='ignore').split(':')
         if len(hd_lst) == 2:
-            header_dict[hd_lst[0].strip()] = hd_lst[1].strip()
+            header_name = hd_lst[0].strip()
+            if header_name in header_dict.keys():
+                header_name = header_name + ' ' + header_dict['Header sections'][-1]
+            header_dict[header_name] = hd_lst[1].strip()
         elif len(hd_lst) == 1 and hd_lst[0] != '': #collect section tiles in header file
             header_dict['Header sections'].append(hd_lst[0])
     
@@ -525,6 +529,140 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
 #reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
 #saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
 #"refresh" parameter can be used to search the directory again for file and replace existing pickle/excel file list
+# def wsxm_collect_files(folderpath, refresh=False):
+#     # folderpath = 'data/'
+#     # folderpath = filedialog.askdirectory() #use folder picker dialogbox
+#     picklepath = f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl" #pickled binary file
+#     if os.path.exists(picklepath) and refresh==False:
+#         file_df = pd.read_pickle(picklepath) #choose "datalist.pkl" file (faster)
+#     else:
+#         file_dict = {'plot': [], 'file':[], 'name': [], 'channel': [], 'type': [], #'mode': [], 
+#                      'feedback': [], 'size':[], 'resolution':[], 'time':[]}
+#         for filename_i in os.listdir(folderpath):
+#             path_i = os.path.join(folderpath,filename_i)
+#             if os.path.isfile(path_i):
+#                 match_i = re.search(r'\_\d{4}', filename_i) #regex to find 4 digit number in filename
+#                 time_i = datetime.datetime.fromtimestamp(os.path.getmtime(path_i)) #time of file modified (from file metadata)
+#                 path_ext_i = os.path.splitext(path_i)[1] #file extension
+#                 if path_ext_i in ['.pkl','.xlsx','.txt']: #ignore pickle and excel and other files
+#                     continue
+#                 if match_i != None:
+#                     # print(datetime.datetime.now().strftime("%H:%M:%S"), filename_i)
+#                     filename_com_i = filename_i[:match_i.start()+5]
+#                     if path_ext_i == '.gsi':
+#                         data_type_i = '3D'
+#                         channel_i = 'Topography' #only check topo image for force volume data
+#                         feedback_i = ''
+                        
+#                         data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True)
+#                         header_i = data_dict_chan_i['header']
+#                         # print(header_i)
+#                         z_pts_i = int(header_i['Number of points per ramp'])
+#                         z_extrema_i = [float(header_i[f'Image {z_pts_i-1:03}'].split(' ')[0]),
+#                                        float(header_i['Image 000'].split(' ')[0])]
+#                         res_i = header_i['Number of columns'] + 'x' + header_i['Number of columns'] + 'x' + header_i['Number of points per ramp']
+#                         size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude'] + ' x ' + f'{int(max(z_extrema_i))}' + ' ' + header_i['Image 000'].split(' ')[1]
+#                         xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
+#                         plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
+#                         plt.axis('off')
+#                         fig_i = fig2html(plt.gcf())
+#                         plt.close()
+#                     elif path_ext_i in ['.curve']: #TODO: *.curve also combine to below condition!
+#                         data_type_i = '1D'
+#                         channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
+#                         fig_i = ''
+#                         res_i = ''
+#                         size_i = ''
+#                         feedback_i = ''
+#                     elif path_ext_i in ['.curves', '.stp', '.cur']:
+#                         data_type_i = '1D'
+#                         channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
+#                         feedback_i = ''
+#                         data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
+#                         spec_dir_i = list(data_dict_chan_i['data'].keys())
+#                         header_i = data_dict_chan_i['header']
+#                         if path_ext_i == '.stp':                            
+#                             res_i = header_i['Number of columns']
+#                             size_i = header_i['X Amplitude']
+#                         else: #for *.curves and *.cur
+#                             res_i = header_i['Number of points']
+#                             size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
+#                         # if path_ext_i == '.curves':
+#                         #     data_dict_chan_i = wsxm_readcurves(path_i, all_files=False)
+#                         #     header_i = data_dict_chan_i['header']
+#                         #     res_i = header_i['Number of points']
+#                         #     spec_dir_i = list(data_dict_chan_i['data'].keys())
+#                         #     size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
+#                         # elif path_ext_i == '.cur':
+#                         #     data_dict_chan_i = wsxm_readcur(path_i, all_files=False)
+#                         #     header_i = data_dict_chan_i['header']
+#                         #     res_i = header_i['Number of points']
+#                         #     spec_dir_i = list(data_dict_chan_i['data'].keys())
+#                         #     size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
+#                         # elif path_ext_i == '.stp':
+#                         #     data_dict_chan_i = wsxm_readstp(path_i, all_files=False)
+#                         #     header_i = data_dict_chan_i['header']
+#                         #     res_i = header_i['Number of columns']
+#                         #     spec_dir_i = list(data_dict_chan_i['data'].keys())
+#                         #     size_i = header_i['X Amplitude']
+#                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
+#                         sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+#                         fig_i = fig2html(plt.gcf())
+#                         plt.close()
+#                     else:
+#                         data_type_i = '2D'
+#                         channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
+#                         file_tags_i = filename_i[match_i.start()+6:].split('.')
+                        
+#                         data_dict_chan_i = wsxm_readchan(path_i, all_files=False)
+#                         header_i = data_dict_chan_i['header']
+#                         res_i = header_i['Number of rows'] + 'x' + header_i['Number of columns']
+#                         size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude']
+#                         feedback_i = header_i['Input channel']
+#                         xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
+#                         plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
+#                         plt.axis('off')
+#                         fig_i = fig2html(plt.gcf())
+#                         plt.close()
+#                 else: #if no match for 4 digit counter found in file name
+#                     if path_ext_i == '.cur': #read other *.cur file e.g. tuning
+#                         filename_com_i = filename_i[:-4]
+#                         data_type_i = '1D'
+#                         channel_i = 'Other'
+#                         data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
+#                         header_i = data_dict_chan_i['header']
+#                         res_i = header_i['Number of points']
+#                         spec_dir_i = list(data_dict_chan_i['data'].keys())
+#                         size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
+#                         feedback_i = ''
+#                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
+#                         sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+#                         fig_i = fig2html(plt.gcf())
+#                         plt.close()
+    
+#                 file_dict['file'].append(filename_com_i)
+#                 file_dict['name'].append(filename_i)
+#                 file_dict['channel'].append(channel_i)
+#                 file_dict['type'].append(data_type_i)
+#                 file_dict['size'].append(size_i)
+#                 file_dict['resolution'].append(res_i)
+#                 file_dict['feedback'].append(feedback_i)
+#                 file_dict['plot'].append(fig_i)
+#                 file_dict['time'].append(time_i)
+        
+#         file_df = pd.DataFrame.from_dict(file_dict)
+
+#         #save "pickled" binary data of file list for later use
+#         file_df.to_pickle(f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl")
+#         #save excel file for manual check
+#         file_df.drop(columns=['plot']).to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
+    
+#     return file_df
+
+
+#reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
+#saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
+#"refresh" parameter can be used to search the directory again for file and replace existing pickle/excel file list
 def wsxm_collect_files(folderpath, refresh=False):
     # folderpath = 'data/'
     # folderpath = filedialog.askdirectory() #use folder picker dialogbox
@@ -532,142 +670,8 @@ def wsxm_collect_files(folderpath, refresh=False):
     if os.path.exists(picklepath) and refresh==False:
         file_df = pd.read_pickle(picklepath) #choose "datalist.pkl" file (faster)
     else:
-        file_dict = {'plot': [], 'file':[], 'name': [], 'channel': [], 'type': [], #'mode': [], 
-                     'feedback': [], 'size':[], 'resolution':[], 'time':[]}
-        for filename_i in os.listdir(folderpath):
-            path_i = os.path.join(folderpath,filename_i)
-            if os.path.isfile(path_i):
-                match_i = re.search(r'\_\d{4}', filename_i) #regex to find 4 digit number in filename
-                time_i = datetime.datetime.fromtimestamp(os.path.getmtime(path_i)) #time of file modified (from file metadata)
-                path_ext_i = os.path.splitext(path_i)[1] #file extension
-                if path_ext_i in ['.pkl','.xlsx','.txt']: #ignore pickle and excel and other files
-                    continue
-                if match_i != None:
-                    # print(datetime.datetime.now().strftime("%H:%M:%S"), filename_i)
-                    filename_com_i = filename_i[:match_i.start()+5]
-                    if path_ext_i == '.gsi':
-                        data_type_i = '3D'
-                        channel_i = 'Topography' #only check topo image for force volume data
-                        feedback_i = ''
-                        
-                        data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True)
-                        header_i = data_dict_chan_i['header']
-                        # print(header_i)
-                        z_pts_i = int(header_i['Number of points per ramp'])
-                        z_extrema_i = [float(header_i[f'Image {z_pts_i-1:03}'].split(' ')[0]),
-                                       float(header_i['Image 000'].split(' ')[0])]
-                        res_i = header_i['Number of columns'] + 'x' + header_i['Number of columns'] + 'x' + header_i['Number of points per ramp']
-                        size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude'] + ' x ' + f'{int(max(z_extrema_i))}' + ' ' + header_i['Image 000'].split(' ')[1]
-                        xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
-                        plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
-                        plt.axis('off')
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
-                    elif path_ext_i in ['.curve']: #TODO: *.curve also combine to below condition!
-                        data_type_i = '1D'
-                        channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
-                        fig_i = ''
-                        res_i = ''
-                        size_i = ''
-                        feedback_i = ''
-                    elif path_ext_i in ['.curves', '.stp', '.cur']:
-                        data_type_i = '1D'
-                        channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
-                        feedback_i = ''
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
-                        spec_dir_i = list(data_dict_chan_i['data'].keys())
-                        header_i = data_dict_chan_i['header']
-                        if path_ext_i == '.stp':                            
-                            res_i = header_i['Number of columns']
-                            size_i = header_i['X Amplitude']
-                        else: #for *.curves and *.cur
-                            res_i = header_i['Number of points']
-                            size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
-                        # if path_ext_i == '.curves':
-                        #     data_dict_chan_i = wsxm_readcurves(path_i, all_files=False)
-                        #     header_i = data_dict_chan_i['header']
-                        #     res_i = header_i['Number of points']
-                        #     spec_dir_i = list(data_dict_chan_i['data'].keys())
-                        #     size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
-                        # elif path_ext_i == '.cur':
-                        #     data_dict_chan_i = wsxm_readcur(path_i, all_files=False)
-                        #     header_i = data_dict_chan_i['header']
-                        #     res_i = header_i['Number of points']
-                        #     spec_dir_i = list(data_dict_chan_i['data'].keys())
-                        #     size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
-                        # elif path_ext_i == '.stp':
-                        #     data_dict_chan_i = wsxm_readstp(path_i, all_files=False)
-                        #     header_i = data_dict_chan_i['header']
-                        #     res_i = header_i['Number of columns']
-                        #     spec_dir_i = list(data_dict_chan_i['data'].keys())
-                        #     size_i = header_i['X Amplitude']
-                        spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
-                        sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
-                    else:
-                        data_type_i = '2D'
-                        channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
-                        file_tags_i = filename_i[match_i.start()+6:].split('.')
-                        
-                        data_dict_chan_i = wsxm_readchan(path_i, all_files=False)
-                        header_i = data_dict_chan_i['header']
-                        res_i = header_i['Number of rows'] + 'x' + header_i['Number of columns']
-                        size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude']
-                        feedback_i = header_i['Input channel']
-                        xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
-                        plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
-                        plt.axis('off')
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
-                else: #if no match for 4 digit counter found in file name
-                    if path_ext_i == '.cur': #read other *.cur file e.g. tuning
-                        filename_com_i = filename_i[:-4]
-                        data_type_i = '1D'
-                        channel_i = 'Other'
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
-                        header_i = data_dict_chan_i['header']
-                        res_i = header_i['Number of points']
-                        spec_dir_i = list(data_dict_chan_i['data'].keys())
-                        size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
-                        feedback_i = ''
-                        spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
-                        sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
-    
-                file_dict['file'].append(filename_com_i)
-                file_dict['name'].append(filename_i)
-                file_dict['channel'].append(channel_i)
-                file_dict['type'].append(data_type_i)
-                file_dict['size'].append(size_i)
-                file_dict['resolution'].append(res_i)
-                file_dict['feedback'].append(feedback_i)
-                file_dict['plot'].append(fig_i)
-                file_dict['time'].append(time_i)
-        
-        file_df = pd.DataFrame.from_dict(file_dict)
-
-        #save "pickled" binary data of file list for later use
-        file_df.to_pickle(f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl")
-        #save excel file for manual check
-        file_df.drop(columns=['plot']).to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
-    
-    return file_df
-
-
-#reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
-#saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
-#"refresh" parameter can be used to search the directory again for file and replace existing pickle/excel file list
-def wsxm_collect_files2(folderpath, refresh=False):
-    # folderpath = 'data/'
-    # folderpath = filedialog.askdirectory() #use folder picker dialogbox
-    picklepath = f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl" #pickled binary file
-    if os.path.exists(picklepath) and refresh==False:
-        file_df = pd.read_pickle(picklepath) #choose "datalist.pkl" file (faster)
-    else:
         file_dict = {'plot': [], 'file':[], 'name': [], 'channel': [], 'type': [], #'feedback': [], #'mode': [], 
-                     'size':[], 'resolution':[], 'time':[], 'header names':[], 'header': []}
+                     'size':[], 'resolution':[], 'time':[], 'extension':[], 'header': [], 'header names':[]}
         for filename_i in os.listdir(folderpath):
             path_i = os.path.join(folderpath,filename_i)
             if os.path.isfile(path_i):
@@ -692,11 +696,15 @@ def wsxm_collect_files2(folderpath, refresh=False):
                                        float(header_i['Image 000'].split(' ')[0])]
                         res_i = header_i['Number of columns'] + 'x' + header_i['Number of columns'] + 'x' + header_i['Number of points per ramp']
                         size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude'] + ' x ' + f'{int(max(z_extrema_i))}' + ' ' + header_i['Image 000'].split(' ')[1]
-                        xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
-                        plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
-                        plt.axis('off')
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
+                        # xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
+                        # plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
+                        # plt.axis('off')
+                        # fig_i = fig2html(plt.gcf(), plot_type='matplotlib')
+                        # plt.close()
+                        fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                                                        y=data_dict_chan_i['data']['Y'],
+                                                        z_mat=data_dict_chan_i['data']['Z'], style='clean'), 
+                                         plot_type='plotly')
                     elif path_ext_i in ['.curves', '.stp', '.cur']:
                         data_type_i = '1D'
                         channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
@@ -711,9 +719,10 @@ def wsxm_collect_files2(folderpath, refresh=False):
                             res_i = header_i['Number of points']
                             size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
-                        sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
+                        # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                        # fig_i = fig2html(plt.gcf())
+                        fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                        # plt.close()
                     else:
                         data_type_i = '2D'
                         channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
@@ -724,11 +733,16 @@ def wsxm_collect_files2(folderpath, refresh=False):
                         res_i = header_i['Number of rows'] + 'x' + header_i['Number of columns']
                         size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude']
                         # feedback_i = header_i['Input channel']
-                        xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
-                        plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
-                        plt.axis('off')
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
+                        # xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
+                        # plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
+                        
+                        # plt.axis('off')
+                        fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                                                        y=data_dict_chan_i['data']['Y'],
+                                                        z_mat=data_dict_chan_i['data']['Z'], style='clean'), 
+                                         plot_type='plotly')
+                        
+                        # plt.close()
                 else: #if no match for 4 digit counter found in file name
                     if path_ext_i == '.cur': #read other *.cur file e.g. tuning
                         filename_com_i = filename_i[:-4]
@@ -741,9 +755,10 @@ def wsxm_collect_files2(folderpath, refresh=False):
                         size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
                         # feedback_i = ''
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
-                        sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
-                        fig_i = fig2html(plt.gcf())
-                        plt.close()
+                        fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                        # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                        # fig_i = fig2html(plt.gcf())
+                        # plt.close()
     
                 file_dict['file'].append(filename_com_i)
                 file_dict['name'].append(filename_i)
@@ -753,9 +768,10 @@ def wsxm_collect_files2(folderpath, refresh=False):
                 file_dict['resolution'].append(res_i)
                 # file_dict['feedback'].append(feedback_i)
                 file_dict['plot'].append(fig_i)
+                file_dict['extension'].append(path_ext_i)
                 file_dict['time'].append(time_i)
-                file_dict['header names'].append(list(header_i.keys()))
-                file_dict['header'].append(header_i)                
+                file_dict['header'].append(header_i)       
+                file_dict['header names'].append(list(header_i.keys()))                         
         
         file_df = pd.DataFrame.from_dict(file_dict)
         # print(file_df['header names'].to_numpy().flatten().unique())
