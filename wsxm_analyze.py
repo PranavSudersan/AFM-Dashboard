@@ -227,8 +227,8 @@ def calc_spectro_prop(data, channel, img_dir):
             #get common data from first channel e.g. number of points
             # channel = FUNC_DICT[params[0]]['channel']
             # key = list(data[channel].keys())[0]
-                    x_pts = int(data[channel][chan_dir]['header']['Number of rows'])
-                    y_pts = int(data[channel][chan_dir]['header']['Number of columns'])
+                    x_pts = int(data[channel][chan_dir]['header']['Number of rows [General Info]'])
+                    y_pts = int(data[channel][chan_dir]['header']['Number of columns [General Info]'])
                     for y in range(y_pts):
                         for x in range(x_pts):
                             # for param in params:
@@ -300,11 +300,11 @@ def get_psd_calib(data_dict):
     
     #Obtain Power Spectral Density of data
     #sample_rate = 2*num_pts*float(head_data['X-Frequency'].split(' ')[0])
-    sample_rate = float(head_data['Sampling frequency'].split(' ')[0])
+    sample_rate = float(head_data['Sampling frequency [Miscellaneous]'].split(' ')[0])
     freq_array, z_pow = signal.periodogram(zz, sample_rate, scaling='density') #power spectral density
     z_pow_avg = np.average(z_pow, axis=0) #averaged
     z_pow_max = z_pow_avg.max()
-    freq_drive = float(head_data['Resonance frequency'].split(' ')[0])
+    freq_drive = float(head_data['Resonance frequency [Dynamic settings]'].split(' ')[0])
     freq_array_shifted = freq_array + freq_drive
     # plt.plot(freq_array, z_pow_avg)
     # plt.show()

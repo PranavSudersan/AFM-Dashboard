@@ -58,9 +58,10 @@ def wsxm_readheader(file, pos=0, inibyte=100):
     for ln in data.splitlines():
         hd_lst = ln.decode('latin-1', errors='ignore').split(':')
         if len(hd_lst) == 2:
-            header_name = hd_lst[0].strip()
-            if header_name in header_dict.keys():
-                header_name = header_name + ' ' + header_dict['Header sections'][-1]
+            # header_name = hd_lst[0].strip()
+            # if header_name in header_dict.keys():
+            #     header_name = header_name + ' ' + header_dict['Header sections'][-1]
+            header_name = f"{hd_lst[0].strip()} {header_dict['Header sections'][-1]}".strip()
             header_dict[header_name] = hd_lst[1].strip()
         elif len(hd_lst) == 1 and hd_lst[0] != '': #collect section tiles in header file
             header_dict['Header sections'].append(hd_lst[0])
@@ -71,16 +72,16 @@ def wsxm_readheader(file, pos=0, inibyte=100):
 
 #read WSxM binary image data
 def wsxm_readimg(file, header_dict, pos):
-    data_format = header_dict['Image Data Type']
-    chan_label = header_dict['Acquisition channel']
-    line_rate = float(header_dict['X-Frequency'].split(' ')[0])
-    x_num = int(header_dict['Number of rows'])
-    y_num = int(header_dict['Number of columns'])
-    x_len = float(header_dict['X Amplitude'].split(' ')[0])
-    y_len = float(header_dict['Y Amplitude'].split(' ')[0])
-    z_len = float(header_dict['Z Amplitude'].split(' ')[0])
-    x_dir = header_dict['X scanning direction']
-    y_dir = header_dict['Y scanning direction'] #CHECK Y DIRECTIONS
+    data_format = header_dict['Image Data Type [General Info]']
+    chan_label = header_dict['Acquisition channel [General Info]']
+    line_rate = float(header_dict['X-Frequency [Control]'].split(' ')[0])
+    x_num = int(header_dict['Number of rows [General Info]'])
+    y_num = int(header_dict['Number of columns [General Info]'])
+    x_len = float(header_dict['X Amplitude [Control]'].split(' ')[0])
+    y_len = float(header_dict['Y Amplitude [Control]'].split(' ')[0])
+    z_len = float(header_dict['Z Amplitude [General Info]'].split(' ')[0])
+    x_dir = header_dict['X scanning direction [General Info]']
+    y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
     #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode images!
     #THIS DOES NOT WORK. CHECK EVERYWHERE
     # chan_adc2v = 20/2**16
@@ -129,9 +130,9 @@ def wsxm_readchan(filepath, all_files=False, mute=False):
             file_num += 1
             file = open(f'{path}','rb')
             header_dict, pos = wsxm_readheader(file)
-            chan_label = header_dict['Acquisition channel']
+            chan_label = header_dict['Acquisition channel [General Info]']
             data_dict_chan, pos = wsxm_readimg(file, header_dict, pos)
-            x_dir = header_dict['X scanning direction']
+            x_dir = header_dict['X scanning direction [General Info]']
             if chan_label in data_dict.keys():
                 data_dict[chan_label][x_dir] = data_dict_chan
             else:
@@ -163,31 +164,31 @@ def wsxm_readcurves(path):
     header_dict, pos = wsxm_readheader(file)
     data_dict_chan, pos = wsxm_readimg(file, header_dict, pos) 
     
-    data_format = header_dict['Image Data Type']
+    data_format = header_dict['Image Data Type [General Info]']
     point_length, type_code  = DATA_TYPES[data_format]
     data_dict_curv = {}
     
     while True:
         # file.seek(pos, 0)
         header_dict, pos = wsxm_readheader(file, pos=pos)     
-        line_pts = int(header_dict['Number of points'])
-        line_num = int(header_dict['Number of lines'])
-        y_label = header_dict['Y axis text'].split('[')[0].strip()
-        x_label = header_dict['X axis text'].split('[')[0].strip()
-        curv_ind = int(header_dict['Index of this Curve'])
-        curv_num = int(header_dict['Number of Curves in this serie'])
+        line_pts = int(header_dict['Number of points [General Info]'])
+        line_num = int(header_dict['Number of lines [General Info]'])
+        y_label = header_dict['Y axis text [General Info]'].split('[')[0].strip()
+        x_label = header_dict['X axis text [General Info]'].split('[')[0].strip()
+        curv_ind = int(header_dict['Index of this Curve [Control]'])
+        curv_num = int(header_dict['Number of Curves in this serie [Control]'])
         #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode!
         # chan_adc2v = 1#20/2**16 #adc to volt converter for 20V DSP, 16 bit resolution
-        chan_fact = float(header_dict['Conversion Factor 00'].split(' ')[0])
-        chan_offs = float(header_dict['Conversion Offset 00'].split(' ')[0])
+        chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+        chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         
-        aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point'].replace('nm','').
+        aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point [Control]'].replace('nm','').
                                    replace('(','').replace(')','').split(',')))
-        time_f = float(header_dict['Forward plot total time'].split(' ')[0])
-        time_b = float(header_dict['Backward plot total time'].split(' ')[0])
+        time_f = float(header_dict['Forward plot total time [Control]'].split(' ')[0])
+        time_b = float(header_dict['Backward plot total time [Control]'].split(' ')[0])
         
         line_order = ['approach', 'retract']
-        if header_dict['First Forward'] == 'No': #CHECK THIS
+        if header_dict['First Forward [Miscellaneous]'] == 'No': #CHECK THIS
             line_order = ['retract', 'approach']
 
         data_len = line_pts*line_num*2*point_length
@@ -247,33 +248,33 @@ def wsxm_readcur(path):
     # file.seek(pos, 0)
     # header_dict, pos = wsxm_readheader(file, pos=pos)
     if '[Control]' in header_dict['Header sections']:
-        line_pts = int(header_dict['Number of points'])
-        line_num = int(header_dict['Number of lines'])
-        y_label = header_dict['Y axis text'].split('[')[0].strip()
-        x_label = header_dict['X axis text'].split('[')[0].strip()
-        if header_dict['Index of this Curve'] == 'Average': #for average curves
-            curv_ind = header_dict['Index of this Curve']
+        line_pts = int(header_dict['Number of points [General Info]'])
+        line_num = int(header_dict['Number of lines [General Info]'])
+        y_label = header_dict['Y axis text [General Info]'].split('[')[0].strip()
+        x_label = header_dict['X axis text [General Info]'].split('[')[0].strip()
+        if header_dict['Index of this Curve [Control]'] == 'Average': #for average curves
+            curv_ind = header_dict['Index of this Curve [Control]']
         else:
-            curv_ind = int(header_dict['Index of this Curve'])
-        curv_num = int(header_dict['Number of Curves in this serie'])
+            curv_ind = int(header_dict['Index of this Curve [Control]'])
+        curv_num = int(header_dict['Number of Curves in this serie [Control]'])
         #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode!
         # chan_adc2v = 1#20/2**16 #adc to volt converter for 20V DSP, 16 bit resolution
-        chan_fact = float(header_dict['Conversion Factor 00'].split(' ')[0])
-        chan_offs = float(header_dict['Conversion Offset 00'].split(' ')[0])
+        chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+        chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         
-        aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point'].replace('nm','').
+        aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point [Control]'].replace('nm','').
                                    replace('(','').replace(')','').split(',')))
-        time_f = float(header_dict['Forward plot total time'].split(' ')[0])
-        time_b = float(header_dict['Backward plot total time'].split(' ')[0])
+        time_f = float(header_dict['Forward plot total time [Control]'].split(' ')[0])
+        time_b = float(header_dict['Backward plot total time [Control]'].split(' ')[0])
         
         line_order = ['approach', 'retract']
-        if header_dict['First Forward'] == 'No': #CHECK THIS
+        if header_dict['First Forward [Miscellaneous]'] == 'No': #CHECK THIS
             line_order = ['retract', 'approach']
     else: #for other kinds of *.cur (e.g. tune data)
-        line_pts = int(header_dict['Number of points'])
-        line_num = int(header_dict['Number of lines'])
-        y_label = header_dict['Y axis text'].split('[')[0].strip()
-        x_label = header_dict['X axis text'].split('[')[0].strip()
+        line_pts = int(header_dict['Number of points [General Info]'])
+        line_num = int(header_dict['Number of lines [General Info]'])
+        y_label = header_dict['Y axis text [General Info]'].split('[')[0].strip()
+        x_label = header_dict['X axis text [General Info]'].split('[')[0].strip()
         #set generic values for irrelevant parameters here
         curv_ind = 1
         curv_num = 1
@@ -337,20 +338,20 @@ def wsxm_readstp(path, data_dict={}):
     file = open(f'{path}','rb')
     filename = os.path.basename(path)
     header_dict, pos = wsxm_readheader(file)
-    data_format = header_dict['Image Data Type']
+    data_format = header_dict['Image Data Type [General Info]']
     chan_label = filename.split('_')[-1].split('.')[0] #header_dict['Acquisition channel']
     # line_rate = float(header_dict['X-Frequency'].split(' ')[0])
-    x_num = int(header_dict['Number of rows'])
-    y_num = int(header_dict['Number of columns'])
-    x_len = float(header_dict['X Amplitude'].split(' ')[0])
-    y_len = float(header_dict['Y Amplitude'].split(' ')[0])
-    z_len = float(header_dict['Z Amplitude'].split(' ')[0])
-    x_dir = header_dict['X scanning direction']
-    y_dir = header_dict['Y scanning direction'] #CHECK Y DIRECTIONS
+    x_num = int(header_dict['Number of rows [General Info]'])
+    y_num = int(header_dict['Number of columns [General Info]'])
+    x_len = float(header_dict['X Amplitude [Control]'].split(' ')[0])
+    y_len = float(header_dict['Y Amplitude [Control]'].split(' ')[0])
+    z_len = float(header_dict['Z Amplitude [General Info]'].split(' ')[0])
+    x_dir = header_dict['X scanning direction [General Info]']
+    y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
     z_dir = SPECT_DICT[filename.split('.')[-2]]
     # print(z_dir,filename)
-    chan_fact = float(header_dict['Conversion Factor 00'].split(' ')[0])
-    chan_offs = float(header_dict['Conversion Offset 00'].split(' ')[0])
+    chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+    chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
 
     z_data = np.linspace(0, x_len, y_num, endpoint=True) #CHECK THIS
     # print(filename,x_dir,y_dir,z_dir)
@@ -440,21 +441,21 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
             file = open(f'{path}','rb')
             header_dict, pos = wsxm_readheader(file)
             
-            data_format = header_dict['Image Data Type']
-            chan_label = header_dict['Acquisition channel']
-            spec_dir = header_dict['Spectroscopy type']
+            data_format = header_dict['Image Data Type [General Info]']
+            chan_label = header_dict['Acquisition channel [General Info]']
+            spec_dir = header_dict['Spectroscopy type [General Info]']
             x_dir = spec_dir.split(' ')[1]
-            y_dir = header_dict['Y scanning direction'] #CHECK Y DIRECTIONS
-            line_rate = float(header_dict['X-Frequency'].split(' ')[0])
-            x_num = int(header_dict['Number of rows'])
-            y_num = int(header_dict['Number of columns'])
-            chan_num = int(header_dict['Number of points per ramp'])
-            x_len = float(header_dict['X Amplitude'].split(' ')[0])
-            y_len = float(header_dict['Y Amplitude'].split(' ')[0])
-            z_len = float(header_dict['Z Amplitude'].split(' ')[0])
-            chan_adc2v = float(header_dict['ADC to V conversion factor'].split(' ')[0])
-            chan_fact = float(header_dict['Conversion factor 0 for input channel'].split(' ')[0])
-            chan_offs = float(header_dict['Conversion offset 0 for input channel'].split(' ')[0])
+            y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
+            line_rate = float(header_dict['X-Frequency [Control]'].split(' ')[0])
+            x_num = int(header_dict['Number of rows [General Info]'])
+            y_num = int(header_dict['Number of columns [General Info]'])
+            chan_num = int(header_dict['Number of points per ramp [General Info]'])
+            x_len = float(header_dict['X Amplitude [Control]'].split(' ')[0])
+            y_len = float(header_dict['Y Amplitude [Control]'].split(' ')[0])
+            z_len = float(header_dict['Z Amplitude [General Info]'].split(' ')[0])
+            chan_adc2v = float(header_dict['ADC to V conversion factor [General Info]'].split(' ')[0])
+            chan_fact = float(header_dict['Conversion factor 0 for input channel [General Info]'].split(' ')[0])
+            chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
                     
             x_data = np.linspace(x_len, 0, x_num, endpoint=True) #if x_dir == 'Backward' else np.linspace(x_len, 0, x_num, endpoint=True)
             y_data = np.linspace(0, y_len, y_num, endpoint=True) #if y_dir == 'Down' else np.linspace(y_len, 0, y_num, endpoint=True)
@@ -462,7 +463,7 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
         
             z_data = np.empty(0)
             for i in range(chan_num):
-                z_data = np.append(z_data, float(header_dict[f'Image {i:03}'].split(' ')[0]))
+                z_data = np.append(z_data, float(header_dict[f'Image {i:03} [Spectroscopy images ramp value list]'].split(' ')[0]))
             z_data = np.flip(z_data) #reverse z data order to make zero as point of contact
             
             #read binary image data
@@ -691,11 +692,11 @@ def wsxm_collect_files(folderpath, refresh=False):
                         data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True)
                         header_i = data_dict_chan_i['header']
                         # print(header_i)
-                        z_pts_i = int(header_i['Number of points per ramp'])
-                        z_extrema_i = [float(header_i[f'Image {z_pts_i-1:03}'].split(' ')[0]),
-                                       float(header_i['Image 000'].split(' ')[0])]
-                        res_i = header_i['Number of columns'] + 'x' + header_i['Number of columns'] + 'x' + header_i['Number of points per ramp']
-                        size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude'] + ' x ' + f'{int(max(z_extrema_i))}' + ' ' + header_i['Image 000'].split(' ')[1]
+                        z_pts_i = int(header_i['Number of points per ramp [General Info]'])
+                        z_extrema_i = [float(header_i[f'Image {z_pts_i-1:03} [Spectroscopy images ramp value list]'].split(' ')[0]),
+                                       float(header_i['Image 000 [Spectroscopy images ramp value list]'].split(' ')[0])]
+                        res_i = header_i['Number of rows [General Info]'] + 'x' + header_i['Number of columns [General Info]'] + 'x' + header_i['Number of points per ramp [General Info]']
+                        size_i = header_i['X Amplitude [Control]'] + ' x ' + header_i['Y Amplitude [Control]'] + ' x ' + f'{int(max(z_extrema_i))}' + ' ' + header_i['Image 000 [Spectroscopy images ramp value list]'].split(' ')[1]
                         # xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
                         # plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
                         # plt.axis('off')
@@ -713,11 +714,11 @@ def wsxm_collect_files(folderpath, refresh=False):
                         spec_dir_i = list(data_dict_chan_i['data'].keys())
                         header_i = data_dict_chan_i['header']
                         if path_ext_i == '.stp':                            
-                            res_i = header_i['Number of columns']
-                            size_i = header_i['X Amplitude']
+                            res_i = header_i['Number of columns [General Info]']
+                            size_i = header_i['X Amplitude [Control]']
                         else: #for *.curves and *.cur
-                            res_i = header_i['Number of points']
-                            size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
+                            res_i = header_i['Number of points [General Info]']
+                            size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit [General Info]']
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
                         # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                         # fig_i = fig2html(plt.gcf())
@@ -730,8 +731,8 @@ def wsxm_collect_files(folderpath, refresh=False):
                         
                         data_dict_chan_i = wsxm_readchan(path_i, all_files=False)
                         header_i = data_dict_chan_i['header']
-                        res_i = header_i['Number of rows'] + 'x' + header_i['Number of columns']
-                        size_i = header_i['X Amplitude'] + ' x ' + header_i['Y Amplitude']
+                        res_i = header_i['Number of rows [General Info]'] + 'x' + header_i['Number of columns [General Info]']
+                        size_i = header_i['X Amplitude [Control]'] + ' x ' + header_i['Y Amplitude [Control]']
                         # feedback_i = header_i['Input channel']
                         # xx_i, yy_i, zz_i = get_imgdata(data_dict_chan_i)
                         # plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
@@ -750,9 +751,9 @@ def wsxm_collect_files(folderpath, refresh=False):
                         channel_i = 'Other'
                         data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
                         header_i = data_dict_chan_i['header']
-                        res_i = header_i['Number of points']
+                        res_i = header_i['Number of points [General Info]']
                         spec_dir_i = list(data_dict_chan_i['data'].keys())
-                        size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit']
+                        size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit [General Info]']
                         # feedback_i = ''
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
                         fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
