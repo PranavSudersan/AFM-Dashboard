@@ -26,9 +26,10 @@ cm_afmhot = matplotlib_to_plotly('afmhot', 255)
 #data must be in "long form", i.e. names to be made into y axis must be inside "multiy_col" column and its corresponding values
 #must be in "y" column. "x" column must contain the common data to be plotted in x axis. Use pandas.melt to convert to long form.
 def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
-                      line_group=None, symbol=None, line_dash=None, hover_name=None):
+                      line_group=None, symbol=None, color=None, line_dash=None, hover_name=None, font_dict=None):
     color_list = ['blue', 'red', 'green', 'purple']
-    font_dict=dict(family='Arial', size=22, color='black')
+    if font_dict == None:
+        font_dict=dict(family='Arial', size=22, color='black')
     
     if yax_dict == None:
         yax_dict = {}
@@ -58,9 +59,9 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
 
     for yvars_i in yvars_new:
         data_i = data[data[multiy_col]==yvars_i]
-        trace_i = px.line(data_i, x=x, y=y, line_group=line_group, symbol=symbol, 
+        trace_i = px.line(data_i, x=x, y=y, line_group=line_group, symbol=symbol, color=color,
                           hover_name=hover_name, line_dash=line_dash, symbol_sequence = ['circle']) 
-        trace_i.update_traces(yaxis=f'y{i+1}', line_color=color_list[i],
+        trace_i.update_traces(yaxis=f'y{i+1}', line_color=color_list[i] if color==None else None,
                               marker=dict(size=1))
         for trace_data_i in trace_i.data:
             fig.add_trace(trace_data_i)
@@ -81,9 +82,10 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
 
 # delete and recreate secondary y axes based on a given yvars and initialise the plot. yax_dict is a dictionary of previously made
 # secondary y axis in the plot, which is compare to create new y axes or recreate everything.
-def plotly_multiyplot_initax(fig, yvars, yax_dict):
+def plotly_multiyplot_initax(fig, yvars, yax_dict, font_dict=None):
     color_list = ['blue', 'red', 'green', 'purple']
-    font_dict=dict(family='Arial',size=22,color='black')
+    if font_dict == None:
+        font_dict=dict(family='Arial',size=22,color='black')
     
     yvars_old = list(yax_dict.keys())
     if all(var in yvars for var in yvars_old) == False:

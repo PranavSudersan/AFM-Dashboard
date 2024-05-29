@@ -61,7 +61,7 @@ def func_ampslope(amp_data, range_factor):
 
     # if ind_range[0] < 0 or ind_range[1] > len(amp_data[segment]['x'])-1:
     if len(high_cluster_indices) <= 2: #ignore small clusters
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
+        return {'value': 0, 'segment': segment, 'x': np.array([]), 'y': np.array([])}
     else:
         p, res, rank, sing, rcond = np.polyfit(amp_data[segment]['x'][high_cluster_indices],
                                                amp_data[segment]['y'][high_cluster_indices], 1, full=True)
@@ -150,7 +150,7 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
     return spectro_data
 
 # Convert spectroscopy data dictionary to dataframe for plotting and calculate parameter
-def wsxm_calcspectroparam(spectro_data, channel, unit):
+def wsxm_calcspectroparam(spectro_data, channel, unit, calc_params=True):
     #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # spectro_data = data[channel]['curves'][curv_num]['data']
     spectro_data_cali = copy.deepcopy(spectro_data)
@@ -160,10 +160,11 @@ def wsxm_calcspectroparam(spectro_data, channel, unit):
     # print(channel, unit, CALIB_DICT[channel][unit])
     # df_spec['y'] = (CALIB_DICT[channel][unit]['factor']*df_spec['y']) + CALIB_DICT[channel][unit]['offset'] #calibrate
     data_dict_param = {}
-    for param in FUNC_DICT[channel].keys():
-        # if channel == FUNC_DICT[param]['channel']:
-        kwargs = FUNC_DICT[channel][param]['kwargs']
-        data_dict_param[param] = FUNC_DICT[channel][param]['function'](spectro_data_cali, **kwargs)
+    if calc_params==True:
+        for param in FUNC_DICT[channel].keys():
+            # if channel == FUNC_DICT[param]['channel']:
+            kwargs = FUNC_DICT[channel][param]['kwargs']
+            data_dict_param[param] = FUNC_DICT[channel][param]['function'](spectro_data_cali, **kwargs)
         
     return df_spec, data_dict_param
 
@@ -179,7 +180,7 @@ def convert_spectro2df(data_dict):
     return df_spec
     
 #obtain property image from spectroscopy data of force-volume based on functions defined in FUNC_DICT
-def calc_spectro_prop(data, channel, img_dir):
+def calc_spectro_prop(data):
     # # img_keys = [key for key in data[channel].keys() if key.startswith(f'Image {img_dir}')] 
     # data_dict_spectro = {}
     # params = FUNC_DICT[channel].keys()
