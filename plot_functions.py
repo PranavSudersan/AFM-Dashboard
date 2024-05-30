@@ -361,11 +361,11 @@ def plotly_heatmap(x, y, z_mat, color=cm_afmhot, style='full', height=400, width
     return fig
 
 #convert matplotlib/plot plot to html for Jupyter display
-def fig2html(fig, plot_type, size=200):
+def fig2html(fig, plot_type, dpi=300, width=200, height=200, pad=0):
     # Save the plot as binary data
     if plot_type == 'matplotlib':
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=300)
+        fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=pad, dpi=dpi)
         buf.seek(0)
         image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
     elif plot_type == 'plotly':
@@ -376,5 +376,5 @@ def fig2html(fig, plot_type, size=200):
     # image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
     # Create an HTML image tag
     # '<img src="data:image/png;base64,{}"/>'.format(fig)
-    image_tag = f'<img src="data:image/png;base64,{image_base64}" width="{size}" height="{size}"/>'
+    image_tag = f'<img src="data:image/png;base64,{image_base64}" width="{width}" height="{height}"/>'
     return image_tag
