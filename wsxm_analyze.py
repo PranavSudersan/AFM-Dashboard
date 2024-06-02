@@ -280,6 +280,87 @@ def get_imgline(data_dict_chan, x=None, y=None):
         return data_dict_chan['data']['X'], data_dict_chan['data']['Z'][y_pt,:]
         
 
+        
+def combine_forcevol_data(data, channel_list):
+    output_all_dict = {}
+    for img_dir in ['Forward', 'Backward']:
+        output_data = {}
+        z_data_temp = data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['Z']
+
+        # z_data_full = np.concatenate([z_data, z_data]) #for both approach and retract for all channels
+        x_len = len(data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['X'])
+        y_len = len(data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['Y'])
+        z_len = len(z_data_temp)
+        # output_data['Z'] = np.reshape([[z_data_full]*(x_len*y_len)], (x_len,y_len,len(z_data_full))).flatten()
+        specdir_list = []
+        z_list = []
+        z_array_dict = {'Forward': z_data_temp, 'Backward': np.flip(z_data_temp)}
+        for spec_dir in ['Forward', 'Backward']:
+            specdir_list.append([SPECT_DICT[spec_dir]]*x_len*y_len*z_len)  
+            z_list.append(np.concatenate([z_array_dict[spec_dir]]*x_len*y_len))
+        # print(z_data, z_list[0][:100])
+        output_data['segment'] = np.concatenate(specdir_list)  
+        output_data['Z'] = np.concatenate(z_list)  
+
+        for chan in channel_list:
+            output_data[chan] = []
+            for spec_dir in ['Forward', 'Backward']:
+                output_data[chan].append(data[chan][f'Image {img_dir} with {spec_dir} Ramps']['data']['ZZ'].flatten(order='F'))
+                # print(len(output_data[chan]), output_data[chan][-1].shape,  len(output_data['segment']), len(output_data['segment'][-1]))
+            output_data[chan] = np.concatenate(output_data[chan])
+
+        output_df = pd.DataFrame(output_data)
+        output_all_dict[img_dir] = output_df
+    
+#     output_df_a = output_df[output_df['segment']=='approach']
+#     output_df_r = output_df[output_df['segment']=='retract']
+#     plt.style.use("dark_background")
+#     #adjust alpha of colormaps
+#     cmap = plt.cm.Spectral
+#     my_cmap = cmap(np.arange(cmap.N))
+#     alphas = np.linspace(0.5,1, cmap.N)
+#     # alphas = np.logspace(np.log10(0.5),0, cmap.N)
+#     # alphas = np.ones(cmap.N)
+#     alphas[0] = 0.2
+#     alphas[1] = 0.3
+#     alphas[2] = 0.4
+#     BG = np.asarray([0.,0.,0.])
+#     for i in range(cmap.N):
+#         my_cmap[i,:-1] = my_cmap[i,:-1]*alphas[i]+BG*(1.-alphas[i])
+#     my_cmap = ListedColormap(my_cmap)
+#     plt.close('all')
+#     fig1, ax1 = plt.subplots(6,2, figsize = (10, 30))
+#     fig2, ax2 = plt.subplots(3,2, figsize = (10, 15))
+#     k = 0
+#     for i, col_i in enumerate(output_df.columns.drop('segment')):          
+#         for j, col_j in enumerate(output_df.columns.drop('segment')):
+#             if j > i:
+#                 print(col_i, col_j)
+#                 if col_i == 'Z':
+#                     g = sns.lineplot(data=output_df_a, x=col_i, y=col_j, ax=ax2[k][0], estimator='median', errorbar=("pi",100))
+#                     g = sns.lineplot(data=output_df_r, x=col_i, y=col_j, ax=ax2[k][1], estimator='median', errorbar=("pi",100))
+#                     ax2[k][1].set_ylabel('')
+#                 g = sns.histplot(data=output_df_a, x=col_i, y=col_j, bins=int(1.0*len(z_data_temp)), ax=ax1[k][0],
+#                                  stat='frequency', edgecolor='none', linewidth=0, cmap=my_cmap)
+#                 g = sns.histplot(data=output_df_r, x=col_i, y=col_j, bins=int(1.0*len(z_data_temp)), ax=ax1[k][1],
+#                                  stat='frequency', edgecolor='none', linewidth=0, cmap=my_cmap)
+#                 # g = sns.lineplot(data=output_df_a, x=col_i, y=col_j, ax=ax[k][0])
+#                 # g = sns.lineplot(data=output_df_r, x=col_i, y=col_j, ax=ax[k][1])
+#                 ax1[k][1].set_ylabel('')
+#                 k += 1
+
+#     ax1[0][0].set_title('approach')
+#     ax1[0][1].set_title('retract')
+#     ax2[0][0].set_title('approach')
+#     ax2[0][1].set_title('retract')
+#     fig_html1 = fig2html(fig1, plot_type='matplotlib', width=900, height=3000, pad=0.1)
+#     fig_html2 = fig2html(fig2, plot_type='matplotlib', width=900, height=1500, pad=0.1)
+    
+#     plt.close()
+#     # plt.show()
+#     print('exit')
+    return output_all_dict
+
 #calibration functions
 
 def get_psd_calib(data_dict):
