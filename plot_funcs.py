@@ -355,8 +355,12 @@ def plotly_pairplot_initax(fig, num, font_dict=None):
     return fig
 
 #line plot x vs y grouped by color column of dataframe data.
-def plotly_lineplot(data, x, y, color, height=400, width=500, font_dict=None):    
-    fig = px.line(data, x=x, y=y, color=color)
+def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, symbol=None, 
+                    height=400, width=500, font_dict=None, color_discrete_sequence=None, line_dash_sequence=None,
+                   symbol_sequence=None):    
+    fig = px.line(data, x=x, y=y, color=color, line_group=line_group, line_dash=line_dash,
+                  symbol=symbol, color_discrete_sequence=color_discrete_sequence, line_dash_sequence=line_dash_sequence,
+                  symbol_sequence=symbol_sequence)
     # if font_dict == None:
     #     font_dict=dict(family='Arial',size=16,color=THEME_DICT[THEME]['fontcolor'])#'white')
     if font_dict == None:
@@ -374,6 +378,8 @@ def plotly_lineplot(data, x, y, color, height=400, width=500, font_dict=None):
                      tickcolor=THEME_DICT[THEME]['fontcolor']#'white'
                     )
     fig.update_yaxes(showline=True,
+                     showgrid=False,
+                     zeroline=False,
                      linecolor=THEME_DICT[THEME]['fontcolor'],#'white',
                      linewidth=1,
                      ticks='outside',
@@ -397,7 +403,7 @@ def plotly_lineplot(data, x, y, color, height=400, width=500, font_dict=None):
     return fig
 
 #plot heat map. here x,y are 1d arrays and z is 2d matrix array
-def plotly_heatmap(x, y, z_mat, color=cm_afmhot, style='full', height=400, width=400, font_dict=None):
+def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', height=400, width=400, font_dict=None):
     fig = go.Figure(data=go.Heatmap(
                        z=z_mat,
                        x=x,
@@ -623,13 +629,14 @@ def fig2html(fig, plot_type, dpi=300, width=200, height=200, pad=0):
 
 
 #add dashed lines in plot for reference
-def plotly_dashedlines(plot_type,fig, x=None, y=None, yaxis=None, visible=True, line_width=3):
+def plotly_dashedlines(plot_type,fig, x=None, y=None, yaxis=None, visible=True, 
+                       line_width=3, secondary_y=False, name=None):
     if plot_type == 'line':
         fig.add_trace(go.Scatter(x=x, y=y, mode='lines', yaxis=yaxis, line_dash="dash", 
                                  line_color=THEME_DICT[THEME]['fontcolor'], line_width=line_width,
-                                 visible=visible))
+                                 visible=visible, name=name))
     elif plot_type == 'hline':
-        fig.add_hline(y=y, yref=yaxis, secondary_y=True, line_dash="dash", 
+        fig.add_hline(y=y, yref=yaxis, secondary_y=secondary_y, line_dash="dash", 
                       line_color=THEME_DICT[THEME]['fontcolor'], line_width=line_width, visible=visible)
     elif plot_type == 'vline':
         fig.add_vline(x=x, line_dash="dash", line_color=THEME_DICT[THEME]['fontcolor'], 

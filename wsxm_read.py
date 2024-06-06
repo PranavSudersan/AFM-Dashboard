@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from wsxm_analyze import convert_spectro2df, get_imgdata
-from plot_functions import plotly_lineplot, plotly_heatmap, fig2html
+from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html
 
 DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
@@ -84,6 +84,7 @@ def wsxm_readimg(file, header_dict, pos):
     y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
     #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode images!
     #THIS DOES NOT WORK. CHECK EVERYWHERE
+    dsp_voltrange = float(header_dict['DSP voltage range [Miscellaneous]'].split(' ')[0])
     # chan_adc2v = 20/2**16
     # chan_fact = int(header_dict['Conversion Factor 00'].split(' ')[0])
     # chan_offs = 0#int(header_dict['Conversion Offset 00'].split(' ')[0])
@@ -99,11 +100,17 @@ def wsxm_readimg(file, header_dict, pos):
     data_len = x_num*y_num*point_length
     bin_data = file.read(data_len)
     # print(data.read()[(x_num*y_num*point_length)+header_size:])
-    ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()    
-    if z_len == 0: #for zero data
-        z_calib = 1
-    else:
-        z_calib = z_len/(ch_array.max()-ch_array.min())
+    ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
+    #dac to volt conversion
+    if chan_label == 'Topography': #ignore for topo
+        if z_len == 0: #for zero data
+            z_calib = 1
+        else:
+            z_calib = z_len/(ch_array.max()-ch_array.min())
+    else: #other channel data stored in volts
+        z_calib = dsp_voltrange/(2**16)
+    # z_calib2 = z_len/(ch_array.max()-ch_array.min())
+    # print(z_calib, z_calib2, z_calib-z_calib2)
     
     #img data dictionary
     data_dict_chan = {'data': {'Z': z_calib*ch_array.reshape(x_num, y_num),
@@ -446,6 +453,7 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
             spec_dir = header_dict['Spectroscopy type [General Info]']
             x_dir = spec_dir.split(' ')[1]
             y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
+            # z_dir = SPECT_DICT[spec_dir.split(' ')[3]]
             line_rate = float(header_dict['X-Frequency [Control]'].split(' ')[0])
             x_num = int(header_dict['Number of rows [General Info]'])
             y_num = int(header_dict['Number of columns [General Info]'])
@@ -464,6 +472,7 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
             z_data = np.empty(0)
             for i in range(chan_num):
                 z_data = np.append(z_data, float(header_dict[f'Image {i:03} [Spectroscopy images ramp value list]'].split(' ')[0]))
+            # if z_dir == 'retract':
             z_data = np.flip(z_data) #reverse z data order to make zero as point of contact
             
             #read binary image data

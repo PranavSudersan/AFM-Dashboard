@@ -7,226 +7,9 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import copy
 
-def func_adhesion(force_data, method, zero_pts, min_percentile, fit_order):
-    segment = 'retract'
-    data_x, data_y = force_data[segment]['x'], force_data[segment]['y']
-    ind_min = np.argmin(data_y)
-    if method == 'simple':
-        f_zero = data_y[-zero_pts:].mean() #CHECK THIS
-        fadh_ymin = data_y[ind_min]
-        adhesion = f_zero - fadh_ymin
-        fit_x = np.array([data_x[-1], data_x[ind_min], data_x[ind_min]])
-        fit_y = np.array([f_zero, f_zero, fadh_ymin])
-        return {'value': adhesion, 'segment': segment, 'x': fit_x, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
-    elif method == 'fitzero':
-        try:
-            ind_maxs = np.where(data_y[:ind_min]>=np.percentile(data_y[:ind_min],min_percentile))[0]
-            p, res, rank, sing, rcond = np.polyfit(data_x[ind_maxs], data_y[ind_maxs], fit_order, full=True)
-            poly = np.poly1d(p)
-            zero_x = np.linspace(data_x[0], data_x[ind_min], 100)
-            zero_y = poly(zero_x)
-            fadh_x = data_x[ind_min]
-            fadh_ymin = data_y[ind_min]
-            fadh_y0 = poly(fadh_x)
-            adhesion = fadh_ymin-fadh_y0
-
-            fit_x = np.append(zero_x, [fadh_x, fadh_x])
-            fit_y = np.append(zero_y, [fadh_y0, fadh_ymin])
-
-            f_zero = data_y[:zero_pts].mean() #CHECK THIS
-            # f_zero = zero_y.mean()
-            # f_min = data_y[ind_min]
-            return {'value': adhesion, 'segment': segment,  'x': fit_x, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
-        except Exception as e:
-            return {'value': 0, 'segment': segment, 'x': [], 'y': []}
-
-# def func_snapin(defl_data, zero_pts): #CHECK ALGORITHM!
-#     segment = 'approach'
-#     # defl_sobel = ndimage.sobel(defl_data[segment]['y']) #sobel transform
-#     # idx_min = np.argmin(defl_sobel) #id of sharpest corner in defl data
-#     defl_idx_min = np.argmin(defl_data[segment]['y']) #id of minima of data
-#     # defl_snapin = defl_data[segment]['y'][idx_min]
-#     z_snapin = defl_data[segment]['x'][defl_idx_min]
-#     defl_min = defl_data[segment]['y'][defl_idx_min]
-#     defl_zero = defl_data[segment]['y'][:zero_pts].mean()
-#     # z_min = defl_data['approach']['x'][defl_idx_min]
-#     # print(idx_min)
-#     return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
-
-def func_snapin(defl_data, min_percentile, fit_order):
-    # min_percentile = 1
-    # fit_order = 2
-    segment = 'approach'
-    data_x, data_y = defl_data[segment]['x'], defl_data[segment]['y']
-    # test2_x, test2_y = test2['Z'], test2['ZZ'][:,y_ind,x_ind]
-    # test_y_filt = ndimage.median_filter(test_y, size=filter_size) #filter
-    # test_y_filt_sobel = ndimage.sobel(test_y_filt) #sobel transform
-    # #this method works well when the jump in points is very fast, no points in between.
-    # n_data = len(test_x)
-    # tol_ind = int(thresh*n_data) #tolerance
-    ind_min = np.argmin(data_y)
-    # ind_min = np.argmax(test_y_filt_sobel)
-
-    # amp_sobel = ndimage.sobel(test_y[:ind_min+tol_ind]) #sobel transform
-    # # amp_sobel = ndimage.sobel(test_y) #sobel transform
-    # # amp_sobel = ndimage.sobel(test_y_filt) #sobel transform
-    # # ind_max = np.argmax(amp_sobel)
-    try:
-        ind_maxs = np.where(data_y[:ind_min]>=np.percentile(data_y[:ind_min],min_percentile))[0]
-        # # testmin_x, testmin_y = test_x[ind_max], test_y[ind_max]
-        # # poly = np.poly1d([-amp_sobel[ind_max], testmin_y-(-amp_sobel[ind_max]*testmin_x)])
-        # # poly = np.poly1d([slope_avg, testmin_y-(slope_avg*testmin_x)])
-        # if len(ind_maxs) == 1:
-        #     slope_avg = -amp_sobel[ind_maxs].mean()
-        #     testmin_x, testmin_y = test_x[ind_maxs].mean(), test_y[ind_maxs].mean()
-        #     poly = np.poly1d([slope_avg, testmin_y-(slope_avg*testmin_x)])
-        # else:
-        p, res, rank, sing, rcond = np.polyfit(data_x[ind_maxs], data_y[ind_maxs], fit_order, full=True)
-        poly = np.poly1d(p)
-
-        fit_x_all = np.linspace(data_x[0], data_x[ind_min], 100)
-        fit_y_all = poly(fit_x_all)
-
-        snapin_x = data_x[ind_min]
-        snapin_y0 = data_y[ind_min]
-        snapin_y1 = poly(snapin_x)
-        snapin_distance = snapin_y1-snapin_y0
-
-        fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
-        fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
-
-        return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y}
-    except Exception as e:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
-
-# def func_stiffness(force_data, bad_pts):
-#     segment = 'approach'
-#     idx_min = np.argmin(force_data[segment]['y'])
-#     if idx_min == force_data[segment]['x'].shape[0]-1: #when spectra not good
-#         return {'value': 0, 'segment': segment, 'x': force_data[segment]['x'][idx_min:], 'y': force_data[segment]['y'][idx_min:]}
-#     else:
-#         p, res, rank, sing, rcond = np.polyfit(force_data[segment]['x'][idx_min:], 
-#                                                force_data[segment]['y'][idx_min:], 1, full=True)
-#         poly = np.poly1d(p)
-#         fit_data = {'x': force_data[segment]['x'][idx_min:], 'y': poly(force_data[segment]['x'][idx_min:])}
-#         return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
-
-#fits a 2nd order polynomial on data after minima and returns the slope of tangent at the end point
-def func_stiffness(force_data):
-    segment = 'approach'
-    idx_min = np.argmin(force_data[segment]['y'])
-    try:
-        data_x, data_y = force_data[segment]['x'][idx_min:], force_data[segment]['y'][idx_min:]
-        p, res, rank, sing, rcond = np.polyfit(data_x, data_y, 2, full=True) #2nd order fit 
-        poly1 = np.poly1d(p)
-        x0, y0 = data_x[-1], poly1(data_x[-1])
-        p_tan = [2*p[0]*x0+p[1], y0-(p[1]*x0)-(2*p[0]*x0**2)] #tangent slope equation
-        poly2 = np.poly1d(p_tan)
-        n_data = len(data_x)
-        fit_x_all = np.linspace(data_x[0], data_y[-1], n_data*10)
-        fit_y_all = poly2(fit_x_all)
-        fitind_min = np.argmin(abs(fit_y_all-data_y.min()))
-        fitind_max = np.argmin(abs(fit_y_all-data_y.max()))
-        fit_x = fit_x_all[fitind_min:fitind_max]
-        fit_y = fit_y_all[fitind_min:fitind_max]
-        return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'y': fit_y}
-    except Exception as e:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
-
-#slope of amplitude change during fd spectroscopy
-# def func_ampslope(amp_data, range_factor):
-#     segment = 'approach'
-#     amp_sobel = ndimage.sobel(amp_data[segment]['y']) #sobel transform
-#     # ind_max = np.argmax(amp_sobel)
-#     # sobel_min, sobel_max = amp_sobel.min(), amp_sobel.max()
-#     # #find range around sobel max to get fit range
-#     # mid_sobel = sobel_min+(sobel_max-sobel_min)*range_factor
-#     # ind_mid1 = np.argmin(abs(amp_sobel-mid_sobel))
-#     # ind_diff = abs(ind_max-ind_mid1)
-#     # ind_mid2 = ind_max + ind_diff if ind_mid1<ind_max else ind_max - ind_diff 
-#     # ind_range = [min([ind_mid1, ind_mid2]), max([ind_mid1, ind_mid2])] #indices ordered from small to big
-
-#     kmeans = KMeans(n_clusters=2) # Create a KMeans instance with 2 clusters: kmeans
-#     kmeans.fit(amp_sobel.reshape(-1, 1)) 
-#     centroids = kmeans.cluster_centers_
-#     low_cluster, high_cluster = (0, 1) if centroids[0] < centroids[1] else (1, 0) #Get higher value clusters
-#     labels = kmeans.labels_
-#     high_cluster_data = amp_sobel[labels == high_cluster]
-#     high_cluster_indices = np.where(labels.reshape(amp_sobel.shape) == high_cluster)[0]
-
-#     # if ind_range[0] < 0 or ind_range[1] > len(amp_data[segment]['x'])-1:
-#     if len(high_cluster_indices) <= 2: #ignore small clusters
-#         return {'value': 0, 'segment': segment, 'x': np.array([]), 'y': np.array([])}
-#     else:
-#         p, res, rank, sing, rcond = np.polyfit(amp_data[segment]['x'][high_cluster_indices],
-#                                                amp_data[segment]['y'][high_cluster_indices], 1, full=True)
-#         poly = np.poly1d(p)
-#         fit_data = {'x': amp_data[segment]['x'][high_cluster_indices], 'y': poly(amp_data[segment]['x'][high_cluster_indices])}
-#         return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
-
-#slope of amplitude change during fd spectroscopy
-#amplitude data is filtered (using filter_size) and the high slope value above "max_percentile" are found by sobel transformation 
-#method "average" returns the mean value of the slopes found, while method "fit" makes a linear fit on the original amplitude data
-#where high slope values are found and returns the slope of the fit
-def func_ampslope(amp_data, filter_size, method, max_percentile):
-    segment = 'approach'  
-    amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
-    amp_data_y_filt = ndimage.median_filter(amp_data_y, size=filter_size) #filter
-    amp_data_y_filt_sobel = ndimage.sobel(amp_data_y_filt) #sobel transform on filtered data
-    #this method works well when the jump in points is very fast, no points in between.
-    n_data = len(amp_data_x)
-    tol_ind = int(filter_size/4) #int(thresh*n_data) #tolerance
-    ind_max = np.argmax(amp_data_y_filt_sobel)
-    amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
-    ind_maxs = np.where(amp_sobel>=np.percentile(amp_sobel,max_percentile))[0]
-    ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
-
-    if method == 'average' or len(ind_maxs)==1: #average to find slope
-        slope = amp_sobel[ind_maxs].mean()
-        ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
-        poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
-    elif method == 'fit': #linear fit to find slope
-        p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
-        slope = p[0]
-        poly = np.poly1d(p)
-
-    fit_x_all = np.linspace(amp_data_x[0], amp_data_x[-1], n_data*10)
-    fit_y_all = poly(fit_x_all)
-    fitind_min = np.argmin(abs(fit_y_all-amp_data_y.min()))
-    fitind_max = np.argmin(abs(fit_y_all-amp_data_y.max()))
-    fit_x = fit_x_all[fitind_min:fitind_max]
-    fit_y = fit_y_all[fitind_min:fitind_max]
-    
-    return {'value': slope, 'segment': segment, 'x': fit_x, 'y': fit_y}
-
-#sigmoidal fit amplitude data to get "growth rate"
-def func_ampgrowth(amp_data):
-    segment = 'approach'  
-    amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
-    p0 = [max(amp_data_y), np.median(-amp_data_x),1,min(amp_data_y)] #initial guess
-    try:
-        popt, pcov = curve_fit(sigmoid, -amp_data_x, amp_data_y, p0, method='dogbox')    
-        fit_x, fit_y = amp_data_x, sigmoid(-amp_data_x, *popt)
-        #sigmoidal function method only works for spectroscopy with lots of points, not for force volume with less points
-        #the maximum derivative method does not work for spectroscopy with lots of points due to "noise" during the points of max change
-        # slope_max = popt[0]*popt[2]/4 #analytical slope maximum expression for sigmoidal curve (at x0)
-        # print(popt, slope_max)
-        # poly2 = np.poly1d([-slope_max, ((popt[0]/2)+popt[3])-(slope_max*popt[1])])
-        # fit_x_all = np.linspace(test_x[0], test_x[-1], n_data*10)
-        # fit_y_all = poly2(fit_x_all)
-        # fitind_min = np.argmin(abs(fit_y_all-test_y.min()))
-        # fitind_max = np.argmin(abs(fit_y_all-test_y.max()))
-        # fit_x = fit_x_all[fitind_min:fitind_max]
-        # fit_y = fit_y_all[fitind_min:fitind_max]
-        return {'value': popt[2], 'segment': segment, 'x': fit_x, 'y': fit_y}
-    except Exception as e:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
-
-#TODO: PUT ALL FITTING FUNCTIONS (EG LORENTZIAN) IN A SEPARATE FILE
-#general logistic function
-def sigmoid(x, L ,x0, k, b):
-    y = L / (1 + np.exp(-k*(x-x0))) + b
-    return (y)
+import spectro_funcs as spf
+import fit_funcs as ftf 
+from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, fig2html
 
 #TODO: calibration dictionary to get in nm or nN from volts
 
@@ -236,7 +19,7 @@ global FUNC_DICT, CALIB_DICT, SPECT_DICT #CHECK THIS! TODO!
 #if function outputs other than 'value' is 'x', 'y', set plot type to 'line' below, else, set plot type to
 #however it needs to be plotted as a dictionary for each additional output.
 #TODO unit calibation add here also where necessary
-FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
+FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                            'kwargs': {'method': 'simple',
                                                       'zero_pts': 10,
                                                       'min_percentile': 1,
@@ -244,12 +27,12 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
                                                      },
                                            'plot type': 'line'#{'zero':'hline', 'min':'hline'}
                                            },
-                              'Stiffness': {'function':func_stiffness,
-                                            'kwargs': {#'bad_pts':1
+                              'Stiffness': {'function': spf.stiffness,
+                                            'kwargs': {'fit_order':2
                                                       },
                                             'plot type': 'line'
                                             },
-                              'Snap-in distance': {'function':func_snapin,
+                              'Snap-in distance': {'function': spf.snapin,
                                                    'kwargs': {#'zero_pts': 10,
                                                               'min_percentile': 1, 
                                                               'fit_order': 2
@@ -257,7 +40,7 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
                                                    'plot type': 'line'
                                                    }
                               },
-             'Amplitude': {'Slope-amp':{'function':func_ampslope,
+             'Amplitude': {'Slope-amp':{'function': spf.ampslope,
                                         'kwargs': {#'range_factor': 0.6,
                                                    'filter_size': 20,
                                                    'method': 'fit', #'fit','average'
@@ -265,7 +48,7 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function':func_adhesion,
                                                   },
                                         'plot type': 'line'
                                         },
-                           'Growth rate':{'function':func_ampgrowth,
+                           'Growth rate':{'function': spf.ampgrowth,
                                         'kwargs': {},
                                         'plot type': 'line'
                                         }
@@ -315,8 +98,13 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
         # data_fd_dict['x'] = np.append(data_fd_dict['x'], data[channel][key]['data']['Z'])
         # data_fd_dict['y'] = np.append(data_fd_dict['y'], data[channel][key]['data']['ZZ'][:,y,x])
         # data_fd_dict['segment'] = np.append(data_fd_dict['segment'], line_pts*[spectro_dir])
+        
         spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y_pt,x_pt],
                                      'x': data[channel][key]['data']['Z']}
+        if spectro_dir == 'retract': #flipped array to ensure data starts from highest x (far away) to lowest x (in contact)
+            spectro_data[spectro_dir]['x'] = np.flip(spectro_data[spectro_dir]['x'])
+            spectro_data[spectro_dir]['y'] = np.flip(spectro_data[spectro_dir]['y'])
+            
     # data_fd = pd.DataFrame.from_dict(data_fd_dict)
     # #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # data_dict_param = {}
@@ -544,22 +332,28 @@ def combine_forcevol_data(data, channel_list):
 
 #calibration functions
 
-def get_psd_calib(data_dict):
-    # im_data, head_data = read_wsxm_chan(filepath)
+def get_psd_calib(amp_data, phase_data):
+    zz_list = []
+    for img_dir in amp_data.keys():
+        head_data = amp_data[img_dir]['header']
+        xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
+
+        xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
+
+        #true amplitude calculated from amp and phase channels
+        zz_i = np.sqrt(np.square(zz_amp) + np.square(zz_phase))
+        zz_list.append(zz_i)
+    
+    zz = np.concatenate(zz_list, axis=1)
+    
+    # if img_dir == 'Backward':
+    #     print(img_dir)
+    #     zz = np.flip(zz, axis=1)
+    
+    # plt.pcolormesh(zz, cmap='afmhot')    
+    # plt.colorbar()
+    fig = fig2html(plotly_heatmap(z_mat=zz, x=None, y=None), plot_type='plotly')
     # plt.close()
-    # im_data = data_dict['data']
-    head_data = data_dict['header']
-    # print(head_data)
-    #plot AFM Z image
-    # xx = im_data['X'].reshape(128,128)
-    # yy = im_data['Y'].reshape(128,128)
-    # zz = im_data['Z']#.reshape(128,128)
-    xx, yy, zz = get_imgdata(data_dict)
-    plt.pcolormesh(xx,yy,zz, cmap='afmhot')    
-    plt.colorbar()
-    fig = fig2html(plt.gcf())
-    plt.close()
-    # plt.show()
     
     #Obtain Power Spectral Density of data
     #sample_rate = 2*num_pts*float(head_data['X-Frequency'].split(' ')[0])
@@ -578,19 +372,21 @@ def get_psd_calib(data_dict):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-#Lorentzian fit
-# y0 = white noise offset, f0 = resonance freq, w = Full width at half maximum, A = area
-def lorentzian(f, y0,f0, w, A):
-    return y0 + ((2*A/np.pi) * (w / ( w**2 + 4*( f - f0 )**2)))
-
-
 def get_calib(df_on, df_off, ind):
     freq_final = df_on['frequency'].iloc[ind]
     psd_final = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
-    plt.plot(freq_final, psd_final)
-    plt.plot(freq_final, df_on['psd'].iloc[ind])
-    plt.plot(freq_final, df_off['psd'].iloc[ind])
+    # plt.plot(freq_final, psd_final, 'r')
+    # plt.plot(freq_final, df_on['psd'].iloc[ind], 'y', alpha=0.5)
+    # plt.plot(freq_final, df_off['psd'].iloc[ind], 'y', alpha=0.5)
     #plt.show()
+    psd_data = pd.DataFrame({'Frequency': freq_final, 
+                             'final': psd_final, 
+                             'laser on': df_on['psd'].iloc[ind],
+                             'laser off': df_off['psd'].iloc[ind]
+                            })
+    psd_df_long = pd.melt(psd_data, id_vars=['Frequency'], value_vars=['final', 'laser on', 'laser off'],
+                         var_name='name', value_name='PSD')
+    
     
     #guess = [0, 76000, 2000, 100000]
     y_guess = 0 #psd_final.min()
@@ -600,7 +396,7 @@ def get_calib(df_on, df_off, ind):
     guess = [y_guess, f_guess, w_guess, A_guess] #y0,f0,w,A
     # print(guess)
     #fit
-    popt, pcov = curve_fit(lorentzian, freq_final,psd_final,
+    popt, pcov = curve_fit(ftf.lorentzian, freq_final,psd_final,
                         p0=guess, bounds=(0,np.inf))
     #print(np.linalg.cond(pcov))
     params = ['offset','resonance freq', 'fwhm', 'area']
@@ -610,11 +406,21 @@ def get_calib(df_on, df_off, ind):
     #plot fit
     f_min, f_max = freq_final.min(), freq_final.max()
     f_ext = 0.1*(f_max-f_min)
-    freq_fit_range = np.linspace(f_min-f_ext, f_max+f_ext, 100000)
-    plt.plot(freq_fit_range,lorentzian(freq_fit_range, *popt))
-    fig = fig2html(plt.gcf())
-    plt.close()
+    fit_n = 8000
+    freq_fit_range = np.linspace(f_min-f_ext, f_max+f_ext, fit_n)
+    # plt.plot(freq_fit_range,ftf.lorentzian(freq_fit_range, *popt), 'k--')
+    # psd_df_fit = pd.DataFrame({'Frequency': freq_fit_range, 'name': ['fit']*fit_n, 
+    #                           'value': ftf.lorentzian(freq_fit_range, *popt)})
+    # psd_df_all = pd.concat([psd_df_long, psd_df_fit])
     
+    fig = plotly_lineplot(data=psd_df_long, x="Frequency", y="PSD", color="name",
+                         color_discrete_sequence=['red', 'blue', 'skyblue'])#, 'yellow'])
+    plotly_dashedlines(plot_type='line',fig=fig, x=freq_fit_range, 
+                       y=ftf.lorentzian(freq_fit_range, *popt), line_width=2, name='fit')
+    fig.update_layout(legend_title=None)
+    # fig.data[-1].line.dash = 'dash'
+    # plt.close()
+    fig_html = fig2html(fig, plot_type='plotly')
     # print(fit_dict)
 
     Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
@@ -625,4 +431,4 @@ def get_calib(df_on, df_off, ind):
     corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
     sens = np.sqrt(corr_fac*kb*T/k_cant)/V_rms/1e-9 #nm/V 
 
-    return sens, k_cant, Q, V_rms, fig
+    return sens, k_cant, Q, V_rms, fig_html
