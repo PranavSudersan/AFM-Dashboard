@@ -404,12 +404,11 @@ def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, sym
 
 #plot heat map. here x,y are 1d arrays and z is 2d matrix array
 def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', height=400, width=400, font_dict=None):
-    fig = go.Figure(data=go.Heatmap(
-                       z=z_mat,
-                       x=x,
-                       y=y,
-                       type = 'heatmap',
-                        colorscale =color))
+    fig = go.Figure(data=go.Heatmap(z=z_mat, x=x, y=y, type = 'heatmap', colorscale =color, 
+                                    zmin=np.percentile(z_mat,1, method='midpoint'),
+                                    zmax=np.percentile(z_mat,99, method='midpoint')
+                                   )
+                   )
     # if font_dict == None:
     #     font_dict=dict(family='Arial',size=16,color=THEME_DICT[THEME]['fontcolor'])#'white')
     if font_dict == None:

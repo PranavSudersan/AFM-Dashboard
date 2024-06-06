@@ -40,21 +40,37 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                    'plot type': 'line'
                                                    }
                               },
-             'Amplitude': {'Slope-amp':{'function': spf.ampslope,
+             'Amplitude': {'Slope-amp0':{'function': spf.ampslope,
                                         'kwargs': {#'range_factor': 0.6,
                                                    'filter_size': 20,
                                                    'method': 'fit', #'fit','average'
-                                                   'max_percentile': 99
+                                                   'max_percentile': 99,
+                                                   'change': 'up'
                                                   },
                                         'plot type': 'line'
                                         },
-                           'Growth rate':{'function': spf.ampgrowth,
+                           'Growth rate0':{'function': spf.ampgrowth,
                                         'kwargs': {},
                                         'plot type': 'line'
                                         }
                           },
+             'True Amplitude': {'Slope-amp':{'function': spf.ampslope,
+                                             'kwargs': {#'range_factor': 0.6,
+                                                        'filter_size': 20,
+                                                        'method': 'fit', #'fit','average'
+                                                        'max_percentile': 99,
+                                                        'change': 'down'
+                                                  },
+                                             'plot type': 'line'
+                                            },
+                                'Growth rate':{'function': spf.ampgrowth,
+                                               'kwargs': {},
+                                               'plot type': 'line'
+                                              }
+                               },
              'Excitation frequency': {},
-             'Phase': {}
+             'Phase': {},
+             'True Phase': {}
             }
 
 # calibration dictionary for each channel. ADD MORE CHANNELS!
@@ -65,11 +81,16 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
               'Amplitude': {'V': {'factor':1, 'offset':0},
                             'nm': {'factor':1, 'offset':0},
                            },
+              'True Amplitude': {'V': {'factor':1, 'offset':0},
+                                 'nm': {'factor':1, 'offset':0},
+                                },
               'Excitation frequency': {'V': {'factor':1, 'offset':0},
                                        'Hz': {'factor':1, 'offset':0}
                                        },
               'Phase': {'V': {'factor':1, 'offset':0}
-                        }
+                        },
+              'True Phase': {'V': {'factor':1, 'offset':0}
+                            }
              }
 
 #rename spectroscopy line to standard names: approach and retract
@@ -78,7 +99,7 @@ SPECT_DICT = {'Forward':'approach', 'Backward': 'retract'}
 #update kwargs for FUNCT_DICT
 def set_funcdict_kwargs(channel,param,kwargs):
     for key, value in kwargs.items():
-        FUNC_DICT[channel][param]['kwargs'][key] = value
+        FUNC_DICT[channel][param]['kwargs'][key] = value    
 
 # Get spectroscopy data dictionary from force volume data at x,y
 def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
@@ -332,17 +353,17 @@ def combine_forcevol_data(data, channel_list):
 
 #calibration functions
 
-def get_psd_calib(amp_data, phase_data):
+def get_psd_calib(amp_data):
     zz_list = []
     for img_dir in amp_data.keys():
         head_data = amp_data[img_dir]['header']
         xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
 
-        xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
+        # xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
 
         #true amplitude calculated from amp and phase channels
-        zz_i = np.sqrt(np.square(zz_amp) + np.square(zz_phase))
-        zz_list.append(zz_i)
+        # zz_i = np.sqrt(np.square(zz_amp) + np.square(zz_phase))
+        zz_list.append(zz_amp)
     
     zz = np.concatenate(zz_list, axis=1)
     

@@ -8,6 +8,7 @@ import seaborn as sns
 import pandas as pd
 from wsxm_analyze import convert_spectro2df, get_imgdata
 from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html
+import transform_funcs as tsf
 
 DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
@@ -147,6 +148,7 @@ def wsxm_readchan(filepath, all_files=False, mute=False):
                 data_dict[chan_label][x_dir] = data_dict_chan
             file.close()
     if all_files == True:
+        wsxm_calc_extrachans(data_dict, data_type='2D')
         return data_dict
     else: #only return the specifc data dictionary for single file if all files are not read
         return data_dict_chan
@@ -424,6 +426,7 @@ def wsxm_readspectra(filepath, all_files=False, mute=False):
         data_dict[chan_label] = temp_dict[chan_label]
     
     if all_files == True:
+        wsxm_calc_extrachans(data_dict, data_type='1D')
         return data_dict
     else:  #only return the specifc data dictionary for single file if all files are not read
         curv_ind = list(data_dict[chan_label]['curves'].keys())[0]
@@ -532,9 +535,87 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
                 data_dict[chan_label][spec_dir] = data_dict_chan
             file.close()
         
-        # pos += data_len #bytes read so far    
+        # pos += data_len #bytes read so far  
+    wsxm_calc_extrachans(data_dict, data_type='3D')
     return data_dict
 
+
+
+#Include into data_dict true amplitude and true phase from the "amplitude" and "phase" channels, 
+#which are in-fact the quadrature and in-phase outputs, respectively,of the lock-in amplifier
+def wsxm_calc_extrachans(data_dict, data_type):
+    channels = data_dict.keys()
+    if all(chan in channels for chan in ['Amplitude', 'Phase']) == True:
+        amp_data = data_dict['Amplitude']
+        phase_data = data_dict['Phase']
+        data_dict['True Amplitude'] = {}
+        data_dict['True Phase'] = {}
+        if data_type == '1D':
+            data_dict['True Amplitude']['curves'] = {}
+            data_dict['True Phase']['curves'] = {}
+            for amp_i, phase_i in zip(amp_data['curves'].items(), phase_data['curves'].items()):
+                data_dict['True Amplitude']['curves'][amp_i[0]] = {'data':{'approach':{'x':amp_i[1]['data']['approach']['x'],
+                                                                                       'y':tsf.hypotenuse(amp_i[1]['data']['approach']['y'],
+                                                                                                          phase_i[1]['data']['approach']['y'])
+                                                                                      },
+                                                                           'retract':{'x':amp_i[1]['data']['retract']['x'],
+                                                                                      'y':tsf.hypotenuse(amp_i[1]['data']['retract']['y'],
+                                                                                                         phase_i[1]['data']['retract']['y'])
+                                                                                     }
+                                                                          },
+                                                                   'header':amp_i[1]['header']
+                                                                  }
+                
+                data_dict['True Phase']['curves'][amp_i[0]] = {'data':{'approach':{'x':amp_i[1]['data']['approach']['x'],
+                                                                                   'y':np.arctan2(amp_i[1]['data']['approach']['y'],
+                                                                                                  phase_i[1]['data']['approach']['y'])
+                                                                                      },
+                                                                       'retract':{'x':amp_i[1]['data']['retract']['x'],
+                                                                                  'y':np.arctan2(amp_i[1]['data']['retract']['y'],
+                                                                                                 phase_i[1]['data']['retract']['y'])
+                                                                                     }
+                                                                          },
+                                                               'header':amp_i[1]['header']
+                                                              }
+        elif data_type == '2D':
+            for amp_i, phase_i in zip(amp_data.items(), phase_data.items()):
+                img_dir = amp_i[0]
+                data_dict['True Amplitude'][img_dir] = {'data': {'X':amp_i[1]['data']['X'],
+                                                                 'Y':amp_i[1]['data']['Y'],
+                                                                 'Z':tsf.hypotenuse(amp_i[1]['data']['Z'],
+                                                                                    phase_i[1]['data']['Z'])},
+                                                        'header':amp_i[1]['header']
+                                                       }
+
+                data_dict['True Phase'][img_dir] = {'data': {'X':phase_i[1]['data']['X'],
+                                                             'Y':phase_i[1]['data']['Y'],
+                                                             'Z':np.arctan2(amp_i[1]['data']['Z'],
+                                                                            phase_i[1]['data']['Z'])},
+                                                    'header':phase_i[1]['header']
+                                                   }
+
+        elif data_type == '3D':
+            for amp_i, phase_i in zip(amp_data.items(), phase_data.items()):
+                img_dir = amp_i[0]
+                data_dict['True Amplitude'][img_dir] = {'data': {'X':amp_i[1]['data']['X'],
+                                                                 'Y':amp_i[1]['data']['Y'],
+                                                                 'Z':amp_i[1]['data']['Z'],
+                                                                 'ZZ':tsf.hypotenuse(amp_i[1]['data']['ZZ'],
+                                                                                     phase_i[1]['data']['ZZ'])},
+                                                        'header':amp_i[1]['header']
+                                                       }
+
+                data_dict['True Phase'][img_dir] = {'data': {'X':phase_i[1]['data']['X'],
+                                                             'Y':phase_i[1]['data']['Y'],
+                                                             'Z':phase_i[1]['data']['Z'],
+                                                             'ZZ':np.arctan2(amp_i[1]['data']['ZZ'],
+                                                                             phase_i[1]['data']['ZZ'])},
+                                                    'header':phase_i[1]['header']
+                                                   }
+    else:
+        chan_missing = ['Amplitude', 'Phase'][list(chan in channels for chan in ['Amplitude', 'Phase']).index(False)]
+        print(f'True Amplitude/Phase channels not created due to missing channel: {chan_missing}')
+    
 
 #reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
 #saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
@@ -711,9 +792,10 @@ def wsxm_collect_files(folderpath, refresh=False):
                         # plt.axis('off')
                         # fig_i = fig2html(plt.gcf(), plot_type='matplotlib')
                         # plt.close()
+                        z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1) #flatten topography
                         fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
                                                         y=data_dict_chan_i['data']['Y'],
-                                                        z_mat=data_dict_chan_i['data']['Z'], style='clean'), 
+                                                        z_mat=z_data_i, style='clean'), 
                                          plot_type='plotly')
                     elif path_ext_i in ['.curves', '.stp', '.cur']:
                         data_type_i = '1D'
@@ -747,9 +829,13 @@ def wsxm_collect_files(folderpath, refresh=False):
                         # plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
                         
                         # plt.axis('off')
+                        if channel_i == 'Topography': #only flatten topography images
+                            z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
+                        else:
+                            z_data_i = data_dict_chan_i['data']['Z']
                         fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
                                                         y=data_dict_chan_i['data']['Y'],
-                                                        z_mat=data_dict_chan_i['data']['Z'], style='clean'), 
+                                                        z_mat=z_data_i, style='clean'), 
                                          plot_type='plotly')
                         
                         # plt.close()

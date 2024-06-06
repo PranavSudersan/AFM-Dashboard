@@ -182,36 +182,52 @@ def stiffness(force_data, fit_order):
 #amplitude data is filtered (using filter_size) and the high slope value above "max_percentile" are found by sobel transformation 
 #method "average" returns the mean value of the slopes found, while method "fit" makes a linear fit on the original amplitude data
 #where high slope values are found and returns the slope of the fit
-def ampslope(amp_data, filter_size, method, max_percentile):
+def ampslope(amp_data, filter_size, method, max_percentile, change):
     segment = 'approach'  
     amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
     amp_data_y_filt = ndimage.median_filter(amp_data_y, size=filter_size) #filter
     amp_data_y_filt_sobel = ndimage.sobel(amp_data_y_filt) #sobel transform on filtered data
+
     #this method works well when the jump in points is very fast, no points in between.
     n_data = len(amp_data_x)
     tol_ind = int(filter_size/4) #int(thresh*n_data) #tolerance
-    ind_max = np.argmax(amp_data_y_filt_sobel)
-    amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
-    ind_maxs = np.where(amp_sobel>=np.percentile(amp_sobel,max_percentile))[0]
-    ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
-
-    if method == 'average' or len(ind_maxs)==1: #average to find slope
-        slope = amp_sobel[ind_maxs].mean()
-        ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
-        poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
-    elif method == 'fit': #linear fit to find slope
-        p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
-        slope = p[0]
-        poly = np.poly1d(p)
+    if change == 'up': #for positive step changes (True Amplitude channel)
+        ind_max = np.argmax(amp_data_y_filt_sobel)
+        amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
+        ind_maxs = np.where(amp_sobel>=np.percentile(amp_sobel,max_percentile))[0]
+        ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
+        if method == 'average' or len(ind_maxs)==1: #average to find slope
+            slope = amp_sobel[ind_maxs].mean()
+            ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
+            poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
+        elif method == 'fit': #linear fit to find slope
+            p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
+            slope = p[0]
+            poly = np.poly1d(p)
+    elif change == 'down': #for negative step changes (Amplitude channel)
+        ind_max = np.argmin(amp_data_y_filt_sobel)
+        amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
+        ind_maxs = np.where(amp_sobel<=np.percentile(amp_sobel,100-max_percentile))[0]
+        ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
+        if method == 'average' or len(ind_maxs)==1: #average to find slope
+            slope = amp_sobel[ind_maxs].mean()
+            ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
+            poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
+        elif method == 'fit': #linear fit to find slope
+            p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
+            slope = p[0]
+            poly = np.poly1d(p)
 
     fit_x_all = np.linspace(amp_data_x[0], amp_data_x[-1], n_data*10)
     fit_y_all = poly(fit_x_all)
-    fitind_min = np.argmin(abs(fit_y_all-amp_data_y.min()))
-    fitind_max = np.argmin(abs(fit_y_all-amp_data_y.max()))
+    fitind1 = np.argmin(abs(fit_y_all-amp_data_y.min()))
+    fitind2 = np.argmin(abs(fit_y_all-amp_data_y.max()))
+    fitind_min = min([fitind1, fitind2])
+    fitind_max = max([fitind1, fitind2])
     fit_x = fit_x_all[fitind_min:fitind_max]
     fit_y = fit_y_all[fitind_min:fitind_max]
     
-    return {'value': -slope, 'segment': segment, 'x': fit_x, 'y': fit_y}
+    return {'value': abs(slope), 'segment': segment, 'x': fit_x, 'y': fit_y}
 
 #sigmoidal fit amplitude data to get "growth rate"
 def ampgrowth(amp_data):
