@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from wsxm_analyze import convert_spectro2df, get_imgdata
-from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html
+from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html, imagedf_to_excel
 import transform_funcs as tsf
 
 DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
@@ -754,7 +754,7 @@ def wsxm_calc_extrachans(data_dict, data_type):
 #reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
 #saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
 #"refresh" parameter can be used to search the directory again for file and replace existing pickle/excel file list
-def wsxm_collect_files(folderpath, refresh=False):
+def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
     # folderpath = 'data/'
     # folderpath = filedialog.askdirectory() #use folder picker dialogbox
     picklepath = f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl" #pickled binary file
@@ -762,7 +762,8 @@ def wsxm_collect_files(folderpath, refresh=False):
         file_df = pd.read_pickle(picklepath) #choose "datalist.pkl" file (faster)
     else:
         file_dict = {'plot': [], 'file':[], 'name': [], 'channel': [], 'type': [], #'feedback': [], #'mode': [], 
-                     'size':[], 'resolution':[], 'time':[], 'extension':[], 'header': [], 'header names':[]}
+                     'size':[], 'resolution':[], 'max':[], 'min':[], 'avg':[], 'time':[], 
+                     'extension':[], 'header': [], 'header names':[]}
         for filename_i in os.listdir(folderpath):
             path_i = os.path.join(folderpath,filename_i)
             if os.path.isfile(path_i):
@@ -792,7 +793,14 @@ def wsxm_collect_files(folderpath, refresh=False):
                         # plt.axis('off')
                         # fig_i = fig2html(plt.gcf(), plot_type='matplotlib')
                         # plt.close()
-                        z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1) #flatten topography
+                        z_max_i = data_dict_chan_i['data']['Z'].max()
+                        z_min_i = data_dict_chan_i['data']['Z'].min()
+                        z_avg_i = data_dict_chan_i['data']['Z'].mean()
+                        if flatten_chan == 'all' or channel_i in flatten_chan: #channel_i == 'Topography': #only flatten topography images
+                            z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
+                        else:
+                            z_data_i = data_dict_chan_i['data']['Z']
+                        # z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1) #flatten topography
                         fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
                                                         y=data_dict_chan_i['data']['Y'],
                                                         z_mat=z_data_i, style='clean'), 
@@ -813,6 +821,9 @@ def wsxm_collect_files(folderpath, refresh=False):
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
                         # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                         # fig_i = fig2html(plt.gcf())
+                        z_max_i = spectrodf_i['y'].max()
+                        z_min_i = spectrodf_i['y'].min()
+                        z_avg_i = spectrodf_i['y'].mean()
                         fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
                         # plt.close()
                     else:
@@ -829,7 +840,10 @@ def wsxm_collect_files(folderpath, refresh=False):
                         # plt.pcolormesh(xx_i, yy_i, zz_i, cmap='afmhot')
                         
                         # plt.axis('off')
-                        if channel_i == 'Topography': #only flatten topography images
+                        z_max_i = data_dict_chan_i['data']['Z'].max()
+                        z_min_i = data_dict_chan_i['data']['Z'].min()
+                        z_avg_i = data_dict_chan_i['data']['Z'].mean()
+                        if flatten_chan == 'all' or channel_i in flatten_chan: #channel_i == 'Topography': #only flatten topography images
                             z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
                         else:
                             z_data_i = data_dict_chan_i['data']['Z']
@@ -851,6 +865,9 @@ def wsxm_collect_files(folderpath, refresh=False):
                         size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit [General Info]']
                         # feedback_i = ''
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
+                        z_max_i = spectrodf_i['y'].max()
+                        z_min_i = spectrodf_i['y'].min()
+                        z_avg_i = spectrodf_i['y'].mean()
                         fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
                         # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                         # fig_i = fig2html(plt.gcf())
@@ -862,6 +879,9 @@ def wsxm_collect_files(folderpath, refresh=False):
                 file_dict['type'].append(data_type_i)
                 file_dict['size'].append(size_i)
                 file_dict['resolution'].append(res_i)
+                file_dict['max'].append(z_max_i)
+                file_dict['min'].append(z_min_i)
+                file_dict['avg'].append(z_avg_i)
                 # file_dict['feedback'].append(feedback_i)
                 file_dict['plot'].append(fig_i)
                 file_dict['extension'].append(path_ext_i)
@@ -870,10 +890,16 @@ def wsxm_collect_files(folderpath, refresh=False):
                 file_dict['header names'].append(list(header_i.keys()))                         
         
         file_df = pd.DataFrame.from_dict(file_dict)
-        # print(file_df['header names'].to_numpy().flatten().unique())
-        #save "pickled" binary data of file list for later use
+        # print(file_df['header names'].to_numpy().flatten().unique())   
+        
+        # file_df.drop(columns=['plot', 'header names']).to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
+        file_df['header data'] = file_df['header'].map(str) #convert dictionary column data to string for excel saving
+        file_df.sort_values(by=['time'], inplace=True, ignore_index=True)
+        #save excel file for manual check including images
+        imagedf_to_excel(file_df.drop(columns=['header', 'header names']), 
+                         f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx", img_size=(100, 100))
+        file_df.drop(columns=['header data'], inplace=True) #remove "stringed" header data
+        #save "pickled" binary data of file list for later use   
         file_df.to_pickle(f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl")
-        #save excel file for manual check
-        file_df.drop(columns=['plot', 'header names']).to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
     
     return file_df

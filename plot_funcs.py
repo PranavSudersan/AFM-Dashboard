@@ -8,6 +8,12 @@ from matplotlib.colors import ListedColormap
 import seaborn as sns
 import numpy as np
 import io, base64
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as xlImage
+# from PIL import Image as PILImage
+from openpyxl.utils.dataframe import dataframe_to_rows
+import re
 
 #plot theme dictionary
 THEME_DICT={'dark': {'plotly':'plotly_dark',
@@ -705,3 +711,74 @@ def merge_plotly_figures(figures, layout):
 
     return combined_image
 
+#save dataframe with plots
+def imagedf_to_excel(data, file_path, img_size=(50, 50)):
+    def extract_base64_image(html):
+        try:
+            match = re.search(r'data:image/\w+;base64,([\w+/=]+)', html)
+            if match:
+                return match.group(1)
+            return None
+        except Exception:
+            return None
+
+    def decode_image(encoded_image):
+        image_data = base64.b64decode(encoded_image)
+        image = PIL.Image.open(io.BytesIO(image_data))
+        return image
+
+    def adjust_column_widths(ws, df, image_columns, img_width):
+        for col_idx, col in enumerate(df.columns, start=1):
+            if col in image_columns:
+                ws.column_dimensions[chr(64 + col_idx)].width = img_width * 0.14  # Approximation to fit the image width
+            else:
+                max_length = max(df[col].astype(str).apply(len).max(), len(col))
+                ws.column_dimensions[chr(64 + col_idx)].width = max_length + 2  # Adjust column width to fit text
+    
+    df = data.reset_index(drop=True)
+    # Identify columns with base64 encoded images in HTML
+    image_columns = []
+    for col in df.columns:
+        if df[col].apply(lambda x: bool(extract_base64_image(x)) if isinstance(x, str) else False).all():
+            image_columns.append(col)
+
+    # Create an Excel workbook and select the active worksheet
+    wb = Workbook()
+    ws = wb.active
+
+    # Write DataFrame headers
+    ws.append(df.columns.tolist())
+
+    # Write DataFrame rows
+    for index, row in df.iterrows():
+        for col_idx, (col, value) in enumerate(row.items(), start=1):
+            if col in image_columns and isinstance(value, str):
+                # Extract and decode the base64 image from the HTML
+                base64_image = extract_base64_image(value)
+                if base64_image:
+                    image = decode_image(base64_image)
+                    image_stream = io.BytesIO()
+                    image.save(image_stream, format='PNG')
+                    image_stream.seek(0)
+                    img = xlImage(image_stream)
+                    
+                    # Set the image size in Excel without resizing the actual image
+                    img.width, img.height = img_size
+                    
+                    # Determine the cell to insert the image into
+                    cell = f'{chr(64 + col_idx)}{index + 2}'  # Convert column index to Excel column letter
+                    
+                    # Insert the image
+                    ws.add_image(img, cell)
+            else:
+                # Write the value to the cell if it's not an image
+                ws.cell(row=index + 2, column=col_idx, value=value)
+
+        # Adjust row height to fit the image size
+        ws.row_dimensions[index + 2].height = img_size[1] * 0.75  # Adjust row height (0.75 is an approximation for row height in pixels)
+
+    # Adjust column widths
+    adjust_column_widths(ws, df, image_columns, img_size[0])
+
+    # Save the workbook
+    wb.save(file_path)
