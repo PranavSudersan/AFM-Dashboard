@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
 from scipy import signal
-import scipy.ndimage as ndimage
-from sklearn.cluster import KMeans
+# import scipy.ndimage as ndimage
+# from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import copy
 
@@ -90,7 +90,15 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
               'Phase': {'V': {'factor':1, 'offset':0}
                         },
               'True Phase': {'V': {'factor':1, 'offset':0}
-                            }
+                            },
+              'X': {'nm': {'factor':1, 'offset':0}
+                   },
+              'Y': {'nm': {'factor':1, 'offset':0}
+                   },
+              'Z': {'nm': {'factor':1, 'offset':0}
+                   },
+              'Topography': {'nm': {'factor':1, 'offset':0}
+                   },
              }
 
 #rename spectroscopy line to standard names: approach and retract

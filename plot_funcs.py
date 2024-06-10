@@ -51,6 +51,20 @@ def matplotlib_to_plotly(cmap_name, num=255):
 #initialize default colourmap "afmhot"
 cm_afmhot = matplotlib_to_plotly('afmhot', 255)
 
+#create colorscale values to insert a discrete colorbar
+def create_discrete_colorscale(n_values, colorlist):
+    if len(colorlist) < n_values:
+        raise ValueError("The length of colorlist must have atlease n_values.")
+    colorlist = colorlist[:n_values]
+    colorscale = []
+    c_pos = 0
+    for i in range(2*n_values):       
+        colorscale.append([c_pos, colorlist[i//2]])
+        if i%2 == 0:
+            c_pos = c_pos+(1/n_values)
+    
+    return colorscale
+
 # create plot with multiple secondary y axes, grouped by data columns specified in line_group, symbol and line_dash   
 # secondary y axis created based on values populated in multiy_col column of data. yvars list can be used to limit the number of
 #secondary y axis created. x, y, line_group, symbol, hover_name and line_dash are passed to px.line (check plotly documentation for that)
@@ -410,7 +424,7 @@ def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, sym
 
 #plot heat map. here x,y are 1d arrays and z is 2d matrix array
 def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', height=400, width=400, font_dict=None):
-    fig = go.Figure(data=go.Heatmap(z=z_mat, x=x, y=y, type = 'heatmap', colorscale =color, 
+    fig = go.Figure(data=go.Heatmap(z=z_mat, x=x, y=y, type = 'heatmap', colorscale=color, 
                                     zmin=np.percentile(z_mat,1, method='midpoint'),
                                     zmax=np.percentile(z_mat,99, method='midpoint')
                                    )
@@ -465,7 +479,7 @@ def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', he
 
 def plotly_subplots_init(rows, cols, specs=None, shared_xaxes=False, shared_yaxes=False, 
                          vertical_spacing=0.05, horizontal_spacing=0.05, font_dict=None,
-                         width=1150, height=1000, margin=dict(t=50, b=0, l=0, r=0), title=''):
+                         width=1150, height=1000, margin=dict(t=50, b=0, l=0, r=0), title='', subplot_titles=None):
     fig = go.FigureWidget()
     if font_dict == None:
         font_dict=dict(family='Arial',size=16)
@@ -474,7 +488,7 @@ def plotly_subplots_init(rows, cols, specs=None, shared_xaxes=False, shared_yaxe
     # specs[1][0] = {"secondary_y": True}
     # specs[2][0] = {"secondary_y": True}
     sp.make_subplots(rows=rows, cols=cols, figure=fig, specs=specs, 
-                     shared_xaxes=shared_xaxes, shared_yaxes=shared_yaxes,
+                     shared_xaxes=shared_xaxes, shared_yaxes=shared_yaxes, subplot_titles=subplot_titles,
                      vertical_spacing=vertical_spacing, horizontal_spacing=horizontal_spacing)  
     # font_dict=dict(family='Arial',size=16,color='white')
     fig.update_layout(font=font_dict,  # font formatting
@@ -484,6 +498,7 @@ def plotly_subplots_init(rows, cols, specs=None, shared_xaxes=False, shared_yaxe
                       width=width, height=height,
                       title=title, #template='plotly_white',  #"plotly", "plotly_white", "plotly_dark", "ggplot2", "seaborn", "simple_white", "none"
                       margin=dict(t=50, b=0, l=0, r=0)) 
+    fig.update_annotations(font=font_dict)
 
     for i in range(rows):
         for j in range(cols):
