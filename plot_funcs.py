@@ -477,10 +477,14 @@ def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', he
                           margin=dict(t=10,l=10,b=10,r=10))
     return fig
 
-def plotly_subplots_init(rows, cols, specs=None, shared_xaxes=False, shared_yaxes=False, 
+def plotly_subplots_init(rows, cols, fig=None, specs=None, shared_xaxes=False, shared_yaxes=False, 
                          vertical_spacing=0.05, horizontal_spacing=0.05, font_dict=None,
                          width=1150, height=1000, margin=dict(t=50, b=0, l=0, r=0), title='', subplot_titles=None):
-    fig = go.FigureWidget()
+    if fig == None:
+        fig = go.FigureWidget()
+    else:
+        fig.data = []
+        fig.layout = {}
     if font_dict == None:
         font_dict=dict(family='Arial',size=16)
     font_dict['color']=THEME_DICT[THEME]['fontcolor']#'white')
@@ -558,8 +562,23 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
 #     output_df = pd.DataFrame(output_data)
     plt.style.use(THEME_DICT[THEME]['matplotlib'])#"dark_background")
     
+    
+    if 'label' in output_df.columns:
+        chan_list = output_df.columns.drop(['segment', 'label'])
+        # output_df_a = output_df[(output_df['segment']=='retract') & (output_df['label']==0)]
+        # output_df_r = output_df[(output_df['segment']=='retract') & (output_df['label']==1)]
+        label_list = list(output_df['label'].unique())
+        # print(label_list)
+        if -999999 in label_list:
+            label_list.remove(-999999)
+        # print(label_list)        
+    else:
+        chan_list = output_df.columns.drop(['segment'])
+    # print(chan_list)
     output_df_a = output_df[output_df['segment']=='approach']
     output_df_r = output_df[output_df['segment']=='retract']
+        
+    
     #adjust alpha of colormaps
     if THEME == 'dark':
         cmap = plt.cm.Spectral
@@ -580,9 +599,9 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
     plt.close('all')
     if plot_type == 'line':
         # fig, ax = plt.subplots(6,2, figsize = (10, 30))
-        fig, ax = plt.subplots(3,2, figsize = (10, 15))
+        fig, ax = plt.subplots(len(chan_list),2*len(label_list), figsize = (10*len(label_list), 15))
         k = 0
-        for i, col_i in enumerate(output_df.columns.drop('segment')):
+        for i, col_i in enumerate(chan_list):
             print(col_i)
             if col_i != 'Z':
                 g = sns.lineplot(data=output_df_a, x='Z', y=col_i, ax=ax[k][0], estimator='median', errorbar=("pi",prange))
@@ -597,30 +616,38 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
         fig_html = fig2html(fig, plot_type='matplotlib', width=900, height=3000, pad=0.1)
     # fig_html2 = fig2html(fig2, plot_type='matplotlib', width=900, height=1500, pad=0.1)
     elif plot_type == 'histogram':
-        fig, ax = plt.subplots(6,2, figsize = (10, 30))
+        fig, ax = plt.subplots(2*(len(chan_list)-1),2*len(label_list), figsize = (10*len(label_list), 10*(len(chan_list)-1)))
         # fig2, ax2 = plt.subplots(3,2, figsize = (10, 15))
         k = 0
-        for i, col_i in enumerate(output_df.columns.drop('segment')):          
-            for j, col_j in enumerate(output_df.columns.drop('segment')):
+        for i, col_i in enumerate(chan_list):          
+            for j, col_j in enumerate(chan_list):
                 if j > i:
                     print(col_i, col_j)
-                    g = sns.histplot(data=output_df_a, x=col_i, y=col_j, bins=bins, ax=ax[k][0], 
-                                     pthresh=1-(prange/100), pmax=psat/100,
-                                     stat='frequency', edgecolor='none', linewidth=0, cmap=my_cmap)
-                    g = sns.histplot(data=output_df_r, x=col_i, y=col_j, bins=bins, ax=ax[k][1], 
-                                     pthresh=1-(prange/100), pmax=psat/100,
-                                     stat='frequency', edgecolor='none', linewidth=0, cmap=my_cmap)
+                    for l, label_l in enumerate(label_list):
+                        g = sns.histplot(data=output_df_a[output_df_a['label']==label_l], x=col_i, y=col_j, 
+                                         bins=bins, ax=ax[k][l], 
+                                         pthresh=1-(prange/100), pmax=psat/100,
+                                         stat='frequency', edgecolor='none', linewidth=0, cmap=my_cmap)
+                        g = sns.histplot(data=output_df_r[output_df_r['label']==label_l], x=col_i, y=col_j, 
+                                         bins=bins, ax=ax[k][l+len(label_list)], 
+                                         pthresh=1-(prange/100), pmax=psat/100,
+                                         stat='frequency', edgecolor='none', linewidth=0, cmap=my_cmap)
                     # g = sns.lineplot(data=output_df_a, x=col_i, y=col_j, ax=ax[k][0])
                     # g = sns.lineplot(data=output_df_r, x=col_i, y=col_j, ax=ax[k][1])
-                    ax[k][1].set_ylabel('')
+                        ax[k][l].set_ylabel('')
+                        ax[k][l+len(label_list)].set_ylabel('')
+                        ax[0][l].set_title(f'{label_l}; approach')
+                        ax[0][l+len(label_list)].set_title(f'{label_l}; retract')
+                    ax[k][0].set_ylabel(col_j)
                     k += 1
 
-        ax[0][0].set_title('approach')
-        ax[0][1].set_title('retract')
+        # ax[0][0].set_title('approach')
+        # ax[0][1].set_title('retract')
         # ax2[0][0].set_title('approach')
         # ax2[0][1].set_title('retract')
         # fig_html1 = fig2html(fig1, plot_type='matplotlib', width=900, height=3000, pad=0.1)
-        fig_html = fig2html(fig, plot_type='matplotlib', width=900, height=1500, pad=0.1)
+        plot_ar = 2*(len(chan_list)-1)/2*len(label_list) #aspect ratio
+        fig_html = fig2html(fig, plot_type='matplotlib', width=1200, height=plot_ar*1200, pad=0.1)
     
     plt.close()
     # plt.show()
@@ -726,22 +753,33 @@ def merge_plotly_figures(figures, layout):
 
     return combined_image
 
+def extract_base64_image(html):
+    try:
+        match = re.search(r'data:image/\w+;base64,([\w+/=]+)', html)
+        if match:
+            return match.group(1)
+        return None
+    except Exception:
+        return None
+
+def decode_image(encoded_image):
+    image_data = base64.b64decode(encoded_image)
+    image = PIL.Image.open(io.BytesIO(image_data))
+    return image
+
+def html2png(html, filepath):
+    base64_image = extract_base64_image(html)
+    if base64_image:
+        image = decode_image(base64_image)
+        image.save(filepath)
+        
+        # image_stream = io.BytesIO()
+        # image.save(image_stream, format='PNG')
+        # image_stream.seek(0)
+
+
 #save dataframe with plots
 def imagedf_to_excel(data, file_path, img_size=(50, 50)):
-    def extract_base64_image(html):
-        try:
-            match = re.search(r'data:image/\w+;base64,([\w+/=]+)', html)
-            if match:
-                return match.group(1)
-            return None
-        except Exception:
-            return None
-
-    def decode_image(encoded_image):
-        image_data = base64.b64decode(encoded_image)
-        image = PIL.Image.open(io.BytesIO(image_data))
-        return image
-
     def adjust_column_widths(ws, df, image_columns, img_width):
         for col_idx, col in enumerate(df.columns, start=1):
             if col in image_columns:

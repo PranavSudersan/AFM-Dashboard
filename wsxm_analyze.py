@@ -40,7 +40,7 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                    'plot type': 'line'
                                                    }
                               },
-             'Amplitude': {'Slope-amp0':{'function': spf.ampslope,
+             'Amplitude': {'Slope-amp':{'function': spf.ampslope,
                                         'kwargs': {#'range_factor': 0.6,
                                                    'filter_size': 20,
                                                    'method': 'fit', #'fit','average'
@@ -49,12 +49,12 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                   },
                                         'plot type': 'line'
                                         },
-                           'Growth rate0':{'function': spf.ampgrowth,
+                           'Growth rate':{'function': spf.ampgrowth,
                                         'kwargs': {},
                                         'plot type': 'line'
                                         }
                           },
-             'True Amplitude': {'Slope-amp':{'function': spf.ampslope,
+             'True Amplitude': {'True Slope-amp':{'function': spf.ampslope,
                                              'kwargs': {#'range_factor': 0.6,
                                                         'filter_size': 20,
                                                         'method': 'fit', #'fit','average'
@@ -63,7 +63,7 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                   },
                                              'plot type': 'line'
                                             },
-                                'Growth rate':{'function': spf.ampgrowth,
+                                'True Growth rate':{'function': spf.ampgrowth,
                                                'kwargs': {},
                                                'plot type': 'line'
                                               }
@@ -279,7 +279,7 @@ def get_imgline(data_dict_chan, x=None, y=None):
         
 
         
-def combine_forcevol_data(data, channel_list):
+def combine_forcevol_data(data, channel_list, label_data=[]):
     output_all_dict = {}
     for img_dir in ['Forward', 'Backward']:
         output_data = {}
@@ -299,14 +299,24 @@ def combine_forcevol_data(data, channel_list):
         # print(z_data, z_list[0][:100])
         output_data['segment'] = np.concatenate(specdir_list)  
         output_data['Z'] = np.concatenate(z_list)  
-
+        
+        if len(label_data) != 0:
+            output_data['label'] = []
+            # label_reshaped = np.dstack([label_data]*z_len).flatten(order='C')
+            label_reshaped = np.repeat(label_data.flatten('F'), z_len)
+            for spec_dir in ['Forward', 'Backward']:
+                output_data['label'].append(label_reshaped)
+            output_data['label'] = np.concatenate(output_data['label'])
+        
+        # print(label_cube.shape, z_len, label_data.shape, label_cube.flatten(order='F').shape)    
         for chan in channel_list:
             output_data[chan] = []
             for spec_dir in ['Forward', 'Backward']:
                 output_data[chan].append(data[chan][f'Image {img_dir} with {spec_dir} Ramps']['data']['ZZ'].flatten(order='F'))
                 # print(len(output_data[chan]), output_data[chan][-1].shape,  len(output_data['segment']), len(output_data['segment'][-1]))
             output_data[chan] = np.concatenate(output_data[chan])
-
+        
+        # print(len(output_data['label']), len(output_data['Z']), len(output_data['Normal force']))
         output_df = pd.DataFrame(output_data)
         output_all_dict[img_dir] = output_df
     
