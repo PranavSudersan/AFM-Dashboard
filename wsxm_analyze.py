@@ -13,7 +13,7 @@ from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, fig2
 
 #TODO: calibration dictionary to get in nm or nN from volts
 
-global FUNC_DICT, CALIB_DICT, SPECT_DICT #CHECK THIS! TODO!
+# global FUNC_DICT, CALIB_DICT, SPECT_DICT #CHECK THIS! TODO!
 
 #dictionary of functions defined to extract spectroscopy data properties
 #if function outputs other than 'value' is 'x', 'y', set plot type to 'line' below, else, set plot type to
@@ -74,6 +74,8 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
             }
 
 # calibration dictionary for each channel. ADD MORE CHANNELS!
+# add a reference unit as key other than 'factor' and 'offset' in order to get additional calibration
+# values for more units.
 CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0}, 
                                'nm': {'factor':1, 'offset':0},
                                'nN':{'factor':1, 'offset':0}
@@ -91,14 +93,22 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                         },
               'True Phase': {'V': {'factor':1, 'offset':0}
                             },
-              'X': {'nm': {'factor':1, 'offset':0}
+              'X': {'Å': {'factor':1, 'offset':0, 'nm': 10},
+                    'nm': {'factor':1, 'offset':0, 'nm': 1},
+                    'µm': {'factor':1, 'offset':0, 'nm': 0.001}
                    },
-              'Y': {'nm': {'factor':1, 'offset':0}
+              'Y': {'Å': {'factor':1, 'offset':0, 'nm': 10},
+                    'nm': {'factor':1, 'offset':0, 'nm': 1},
+                    'µm': {'factor':1, 'offset':0, 'nm': 0.001}
                    },
-              'Z': {'nm': {'factor':1, 'offset':0}
+              'Z': {'Å': {'factor':1, 'offset':0, 'nm': 10},
+                    'nm': {'factor':1, 'offset':0, 'nm': 1},
+                    'µm': {'factor':1, 'offset':0, 'nm': 0.001}
                    },
-              'Topography': {'nm': {'factor':1, 'offset':0}
-                   },
+              'Topography': {'Å': {'factor':1, 'offset':0, 'nm': 10},
+                             'nm': {'factor':1, 'offset':0, 'nm': 1},
+                             'µm': {'factor':1, 'offset':0, 'nm': 0.001}
+                            },
              }
 
 #rename spectroscopy line to standard names: approach and retract
@@ -106,11 +116,29 @@ SPECT_DICT = {'Forward':'approach', 'Backward': 'retract'}
 
 #update kwargs for FUNCT_DICT
 def set_funcdict_kwargs(channel,param,kwargs):
+    global FUNC_DICT
     for key, value in kwargs.items():
-        FUNC_DICT[channel][param]['kwargs'][key] = value    
+        FUNC_DICT[channel][param]['kwargs'][key] = value 
+        
+def set_calibdict_values(channel,unit_kw):
+    global CALIB_DICT
+    for key, value in unit_kw.items():
+        CALIB_DICT[channel][key]['factor'] = value['factor']
+        CALIB_DICT[channel][key]['offset'] = value['offset']
+        #update all units calibration which are simple multiples of a reference unit
+        ref_unit = [k for k in CALIB_DICT[channel][key].keys() if k not in ['factor', 'offset']]
+        if len(ref_unit) == 1:
+            for key2 in [k for k in CALIB_DICT[channel].keys() if k != key]:
+                if ref_unit[0] in CALIB_DICT[channel][key2].keys():
+                    CALIB_DICT[channel][key2]['factor'] = value['factor']*(CALIB_DICT[channel][key2][ref_unit[0]]/\
+                                                                           CALIB_DICT[channel][key][ref_unit[0]])
+                    CALIB_DICT[channel][key2]['offset'] = value['offset']*(CALIB_DICT[channel][key2][ref_unit[0]]/\
+                                                                           CALIB_DICT[channel][key][ref_unit[0]])
+    # print(channel, CALIB_DICT[channel])
+                
 
 # Get spectroscopy data dictionary from force volume data at x,y
-def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
+def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None):
     # label_dict = {'Forward':'approach', 'Backward': 'retract'} #rename lines
     #initialize spectroscopy data dictionary
     # data_fd_dict = {'x': np.empty(0), 'y': np.empty(0), 'segment': np.empty(0)}
@@ -119,8 +147,11 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
     spectro_data = {}
     for key in img_keys:
         spectro_dir = SPECT_DICT[key.split(' ')[3]]
-        x_pt = np.argmin(abs(data[channel][key]['data']['X']-x))
-        y_pt = np.argmin(abs(data[channel][key]['data']['Y']-y))
+        img_data = get_imgdata(data[channel][key], channel, unit_dict=unit_dict) #get calibrated data
+        x_pt = np.argmin(abs(img_data['X']-x))
+        y_pt = np.argmin(abs(img_data['Y']-y))
+        # x_pt = np.argmin(abs(data[channel][key]['data']['X']-x)) #NOT CORRECT! UNITS NOT CONSIDERED HERE!
+        # y_pt = np.argmin(abs(data[channel][key]['data']['Y']-y))
         # if segment != 'both' and segment != spectro_dir: #skip unwanted segment
         #     continue
         # line_pts = int(data[channel][key]['header']['Number of points per ramp'])
@@ -128,8 +159,10 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
         # data_fd_dict['y'] = np.append(data_fd_dict['y'], data[channel][key]['data']['ZZ'][:,y,x])
         # data_fd_dict['segment'] = np.append(data_fd_dict['segment'], line_pts*[spectro_dir])
         
-        spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y_pt,x_pt],
-                                     'x': data[channel][key]['data']['Z']}
+        # spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y_pt,x_pt],
+        #                              'x': data[channel][key]['data']['Z']}
+        spectro_data[spectro_dir] = {'y': img_data['ZZ'][:,y_pt,x_pt],
+                                     'x': img_data['Z']}
         if spectro_dir == 'retract': #flipped array to ensure data starts from highest x (far away) to lowest x (in contact)
             spectro_data[spectro_dir]['x'] = np.flip(spectro_data[spectro_dir]['x'])
             spectro_data[spectro_dir]['y'] = np.flip(spectro_data[spectro_dir]['y'])
@@ -145,13 +178,20 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0):
     return spectro_data
 
 # Convert spectroscopy data dictionary to dataframe for plotting and calculate parameter
-def wsxm_calcspectroparam(spectro_data, channel, unit, calc_params=True, properties=[]):
+# pass unit_dict=None to not make any calibration transform to spectro_data (useful when used in conjunction with wsxm_getspectro
+def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=True, properties=[]):
     #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # spectro_data = data[channel]['curves'][curv_num]['data']
     spectro_data_cali = copy.deepcopy(spectro_data)
     for key in spectro_data_cali.keys(): #calibrate
-        spectro_data_cali[key]['y'] = (CALIB_DICT[channel][unit]['factor']*spectro_data_cali[key]['y']) + CALIB_DICT[channel][unit]['offset'] 
-    df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
+        if unit_dict == None: #return spectro data without calibration
+            df_spec = convert_spectro2df(spectro_data_cali) 
+        else:
+            spectro_data_cali[key]['y'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*spectro_data_cali[key]['y']) + \
+                                            CALIB_DICT[channel][unit_dict[channel]]['offset'] 
+            spectro_data_cali[key]['x'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*spectro_data_cali[key]['x']) + \
+                                            CALIB_DICT['Z'][unit_dict['Z']]['offset'] #CHECK THIS! THIS ONLY APPLIES FOR SPECTROSCOPY IN Z
+            df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
     # print(channel, unit, CALIB_DICT[channel][unit])
     # df_spec['y'] = (CALIB_DICT[channel][unit]['factor']*df_spec['y']) + CALIB_DICT[channel][unit]['offset'] #calibrate
     data_dict_param = {}
@@ -249,36 +289,87 @@ def calc_spectro_prop(data, properties=[]):
     return data_dict_param
 
 #get image data in appropriate matrix structure for plotting
-def get_imgdata(data_dict_chan, style = 'XY', x=0, y=0, z=0):
-    data0 = data_dict_chan['data'][style[0]]
-    data1 = data_dict_chan['data'][style[1]]
-    data_mat = np.meshgrid(data0, data1)
+def get_imgdata(data_dict_chan, channel, x=None, y=None, z=None, unit_dict=None):
+                # unit_xyz={'X':'nm', 'Y':'nm', 'Z':'nm'}):
+    # data0 = data_dict_chan['data'][style[0]]
+    # data1 = data_dict_chan['data'][style[1]]
+    # data_mat = np.meshgrid(data0, data1)
+    img_data = {}
+    # print(CALIB_DICT['X'])
     if 'ZZ' in data_dict_chan['data'].keys(): #for force volume data
-        if style == 'XY':
-            z_pt = np.argmin(abs(data_dict_chan['data']['Z']-z))
-            img_data = data_dict_chan['data']['ZZ'][z_pt,:,:] #1st index:xy sections, 2nd index:xz sections, 3rd index: yz sections
-        elif style == 'XZ':
-            y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
-            img_data = data_dict_chan['data']['ZZ'][:,y_pt,:]
-        elif style == 'YZ':
-            x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
-            img_data = data_dict_chan['data']['ZZ'][:,:,x_pt]
+        if unit_dict == None:
+            img_data['X'] = data_dict_chan['data']['X']
+            img_data['Y'] = data_dict_chan['data']['Y']
+            img_data['Z'] = data_dict_chan['data']['Z']
+        else:
+            img_data['X'] = (CALIB_DICT['X'][unit_dict['X']]['factor']*data_dict_chan['data']['X']) + CALIB_DICT['X'][unit_dict['X']]['offset'] 
+            img_data['Y'] = (CALIB_DICT['Y'][unit_dict['Y']]['factor']*data_dict_chan['data']['Y']) + CALIB_DICT['Y'][unit_dict['Y']]['offset']
+            img_data['Z'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*data_dict_chan['data']['Z']) + CALIB_DICT['Z'][unit_dict['Z']]['offset'] 
+        # if style == 'XY':
+        if z != None:
+            z_pt = np.argmin(abs(img_data['Z']-z))
+            unit = 'V' if unit_dict==None else unit_dict[channel]
+            img_data['XY'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['ZZ'][z_pt,:,:]) + \
+                                CALIB_DICT[channel][unit]['offset'] 
+            # z_pt = np.argmin(abs(data_dict_chan['data']['Z']-z))
+            # img_data = data_dict_chan['data']['ZZ'][z_pt,:,:] #1st index:xy sections, 2nd index:xz sections, 3rd index: yz sections
+        # elif style == 'XZ':
+        if y != None:
+            y_pt = np.argmin(abs(img_data['Y']-y))
+            unit = 'V' if unit_dict==None else unit_dict[channel]
+            # print(y_pt)
+            img_data['XZ'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['ZZ'][:,y_pt,:]) + \
+                                CALIB_DICT[channel][unit]['offset']
+            # y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
+            # img_data = data_dict_chan['data']['ZZ'][:,y_pt,:]
+        # elif style == 'YZ':
+        if x != None:
+            x_pt = np.argmin(abs(img_data['X']-x))
+            unit = 'V' if unit_dict==None else unit_dict[channel]
+            img_data['YZ'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['ZZ'][:,:,x_pt]) + \
+                                CALIB_DICT[channel][unit]['offset']
+            # x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
+            # img_data = data_dict_chan['data']['ZZ'][:,:,x_pt]
+        if x == None and y == None and z == None:
+            unit = 'V' if unit_dict==None else unit_dict[channel] #return orignal cube data after applying caliration
+            img_data['ZZ'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['ZZ']) + \
+                                CALIB_DICT[channel][unit]['offset']
     else: #for usual image data
-        img_data = data_dict_chan['data']['Z']
-    data_mat.append(img_data)
-    return data_mat[0], data_mat[1], data_mat[2]
+        img_data['X'] = (CALIB_DICT['X'][unit_dict['X']]['factor']*data_dict_chan['data']['X']) + CALIB_DICT['X'][unit_dict['X']]['offset'] 
+        img_data['Y'] = (CALIB_DICT['Y'][unit_dict['Y']]['factor']*data_dict_chan['data']['Y']) + CALIB_DICT['Y'][unit_dict['Y']]['offset'] 
+        img_data['Z'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*data_dict_chan['data']['Z']) + \
+                            CALIB_DICT[channel][unit_dict[channel]]['offset'] 
+        # img_data = data_dict_chan['data']['Z']
+    # data_mat.append(img_data)
+    # return data_mat[0], data_mat[1], data_mat[2]
+    return img_data
 
 #get data at a specific line of an image. x=vertical line, y=horizontal line
-def get_imgline(data_dict_chan, x=None, y=None):
+#pass unit_dict=None for no calibration transform on data
+def get_imgline(data_dict_chan, channel, x=None, y=None, unit_dict=None):
+                # unit_xy={'X':'nm', 'Y':'nm'}):
+    img_data = {}
+    if unit_dict == None:
+        img_data['X'] = data_dict_chan['data']['X']
+        img_data['Y'] = data_dict_chan['data']['Y']
+    else:
+        img_data['X'] = (CALIB_DICT['X'][unit_dict['X']]['factor']*data_dict_chan['data']['X']) + CALIB_DICT['X'][unit_dict['X']]['offset'] 
+        img_data['Y'] = (CALIB_DICT['Y'][unit_dict['Y']]['factor']*data_dict_chan['data']['Y']) + CALIB_DICT['Y'][unit_dict['Y']]['offset'] 
     if x != None:
-        x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
-        return data_dict_chan['data']['Y'], data_dict_chan['data']['Z'][:,x_pt]
+        unit = 'V' if unit_dict==None else unit_dict[channel]
+        x_pt = np.argmin(abs(img_data['X']-x))
+        img_data['Z'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['Z'][:,x_pt]) + \
+                            CALIB_DICT[channel][unit]['offset'] 
+        # x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
+        return img_data['Y'], img_data['Z']#[:,x_pt]
     if y != None:
-        y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
-        return data_dict_chan['data']['X'], data_dict_chan['data']['Z'][y_pt,:]
-        
-
-        
+        unit = 'V' if unit_dict==None else unit_dict[channel]
+        y_pt = np.argmin(abs(img_data['Y']-y))
+        img_data['Z'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['Z'][y_pt,:]) + \
+                            CALIB_DICT[channel][unit]['offset'] 
+        # y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
+        return img_data['X'], img_data['Z']#[y_pt,:]
+                
 def combine_forcevol_data(data, channel_list, label_data=[]):
     output_all_dict = {}
     for img_dir in ['Forward', 'Backward']:
@@ -375,7 +466,8 @@ def get_psd_calib(amp_data):
     zz_list = []
     for img_dir in amp_data.keys():
         head_data = amp_data[img_dir]['header']
-        xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
+        zz_amp = amp_data[img_dir]['data']['Z']
+        # xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
 
         # xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
 
