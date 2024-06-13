@@ -105,7 +105,7 @@ def snapin(defl_data, min_percentile, fit_order):
             fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
             fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
 
-            return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y}
+            return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': ind_min}
     # except Exception as e:
     #     return {'value': 0, 'segment': segment, 'x': [], 'y': []}
 

@@ -479,7 +479,8 @@ def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', he
 
 def plotly_subplots_init(rows, cols, fig=None, specs=None, shared_xaxes=False, shared_yaxes=False, 
                          vertical_spacing=0.05, horizontal_spacing=0.05, font_dict=None,
-                         width=1150, height=1000, margin=dict(t=50, b=0, l=0, r=0), title='', subplot_titles=None):
+                         width=1150, height=1000, margin=dict(t=50, b=0, l=0, r=0), title='', subplot_titles=None,
+                         column_titles=None, row_titles=None):
     if fig == None:
         fig = go.FigureWidget()
     else:
@@ -493,7 +494,8 @@ def plotly_subplots_init(rows, cols, fig=None, specs=None, shared_xaxes=False, s
     # specs[2][0] = {"secondary_y": True}
     sp.make_subplots(rows=rows, cols=cols, figure=fig, specs=specs, 
                      shared_xaxes=shared_xaxes, shared_yaxes=shared_yaxes, subplot_titles=subplot_titles,
-                     vertical_spacing=vertical_spacing, horizontal_spacing=horizontal_spacing)  
+                     vertical_spacing=vertical_spacing, horizontal_spacing=horizontal_spacing,
+                     column_titles=column_titles, row_titles=row_titles)  
     # font_dict=dict(family='Arial',size=16,color='white')
     fig.update_layout(font=font_dict,  # font formatting
                       plot_bgcolor=THEME_DICT[THEME]['bgcolor'],#'black',  # background color

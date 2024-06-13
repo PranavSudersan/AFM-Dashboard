@@ -6,6 +6,7 @@ from scipy import signal
 # from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import copy
+import re
 
 import spectro_funcs as spf
 import fit_funcs as ftf 
@@ -25,21 +26,24 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                       'min_percentile': 1,
                                                       'fit_order': 2
                                                      },
-                                           'plot type': 'line'#{'zero':'hline', 'min':'hline'}
+                                           'plot type': 'line',#{'zero':'hline', 'min':'hline'}
+                                           'unit': '[Normal force]'
                                            },
                               'Stiffness': {'function': spf.stiffness,
                                             'kwargs': {'fit_order':2
                                                       },
-                                            'plot type': 'line'
+                                            'plot type': 'line',
+                                            'unit': '[Normal force]/[Z]'
                                             },
-                              'Snap-in distance': {'function': spf.snapin,
-                                                   'kwargs': {#'zero_pts': 10,
-                                                              'min_percentile': 1, 
-                                                              'fit_order': 2
-                                                             },
-                                                   'plot type': 'line'
-                                                   }
                               },
+             'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
+                                                        'kwargs': {'min_percentile': 1, 
+                                                                   'fit_order': 2
+                                                                  },
+                                                        'plot type': 'line',
+                                                        'unit': '[Normal deflection]'
+                                                       }
+                                  },
              'Amplitude': {'Slope-amp':{'function': spf.ampslope,
                                         'kwargs': {#'range_factor': 0.6,
                                                    'filter_size': 20,
@@ -47,26 +51,30 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                    'max_percentile': 99,
                                                    'change': 'up'
                                                   },
-                                        'plot type': 'line'
+                                        'plot type': 'line',
+                                        'unit': '[Amplitude]/[Z]'
                                         },
                            'Growth rate':{'function': spf.ampgrowth,
-                                        'kwargs': {},
-                                        'plot type': 'line'
+                                          'kwargs': {},
+                                          'plot type': 'line',
+                                          'unit': '1/[Z]'
                                         }
                           },
              'True Amplitude': {'True Slope-amp':{'function': spf.ampslope,
-                                             'kwargs': {#'range_factor': 0.6,
+                                                  'kwargs': {#'range_factor': 0.6,
                                                         'filter_size': 20,
                                                         'method': 'fit', #'fit','average'
                                                         'max_percentile': 99,
                                                         'change': 'down'
                                                   },
-                                             'plot type': 'line'
-                                            },
+                                                  'plot type': 'line',
+                                                  'unit': '[True Amplitude]/[Z]'
+                                                 },
                                 'True Growth rate':{'function': spf.ampgrowth,
-                                               'kwargs': {},
-                                               'plot type': 'line'
-                                              }
+                                                    'kwargs': {},
+                                                    'plot type': 'line',
+                                                    'unit': '1/[Z]'
+                                                   }
                                },
              'Excitation frequency': {},
              'Phase': {},
@@ -77,9 +85,11 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
 # add a reference unit as key other than 'factor' and 'offset' in order to get additional calibration
 # values for more units.
 CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0}, 
-                               'nm': {'factor':1, 'offset':0},
-                               'nN':{'factor':1, 'offset':0}
+                               'nN': {'factor':1, 'offset':0},
                               },
+              'Normal deflection': {'V': {'factor':1, 'offset':0}, 
+                                    'nm': {'factor':1, 'offset':0}
+                                   },
               'Amplitude': {'V': {'factor':1, 'offset':0},
                             'nm': {'factor':1, 'offset':0},
                            },
@@ -91,7 +101,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                                        },
               'Phase': {'V': {'factor':1, 'offset':0}
                         },
-              'True Phase': {'V': {'factor':1, 'offset':0}
+              'True Phase': {'V': {'factor':1, 'offset':0},
+                             '°': {'factor':1, 'offset':0}
                             },
               'X': {'Å': {'factor':1, 'offset':0, 'nm': 10},
                     'nm': {'factor':1, 'offset':0, 'nm': 1},
@@ -112,7 +123,13 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
              }
 
 #rename spectroscopy line to standard names: approach and retract
-SPECT_DICT = {'Forward':'approach', 'Backward': 'retract'} 
+# SPECT_DICT = {'Forward':'approach', 'Backward': 'retract'} 
+#rename spectroscopy line to standard names: approach and retract
+#also define label name for spectro_data when plotting
+SPECT_DICT = {'Forward': 'approach', 'Backward': 'retract',
+              'b': 'retract', 'f': 'approach',
+              'x': 'Piezo position', 'd': 'Tip-sample distance'
+             } 
 
 #update kwargs for FUNCT_DICT
 def set_funcdict_kwargs(channel,param,kwargs):
@@ -135,10 +152,34 @@ def set_calibdict_values(channel,unit_kw):
                     CALIB_DICT[channel][key2]['offset'] = value['offset']*(CALIB_DICT[channel][key2][ref_unit[0]]/\
                                                                            CALIB_DICT[channel][key][ref_unit[0]])
     # print(channel, CALIB_DICT[channel])
-                
+
+#get correct unit for calculated parameters using exisitng channel calibration units
+def parse_paramunit(param, unit_dict, evaluate):
+    for key, val in FUNC_DICT.items():
+        if param in val.keys():
+            param_channel = key
+            break
+    unit_formula = FUNC_DICT[param_channel][param]['unit']
+    pattern = re.compile(r'\[(.*?)\]') # Regular expression to find all occurrences of text within square brackets
+    if evaluate == False: #return units
+        result = pattern.sub(lambda match: unit_dict.get(match.group(1), match.group(0)), unit_formula)
+    else: #return 'factor' corresponding to units from CALIB_DICT for param channel calibration
+        result = pattern.sub(lambda match: str(CALIB_DICT.get(match.group(1), 
+                                                              match.group(0))[unit_dict.get(match.group(1), 
+                                                                                            match.group(0))]['factor']), 
+                             unit_formula)
+    # def lookup(match): # Function to use as a replacement, which looks up the key in the dictionary
+    #     key = match.group(1)  # Extract the key without brackets
+    #     return unit_dict.get(key, match.group(0))   # Return the value if key is found, else return the original match
+    
+    return result
+    
 
 # Get spectroscopy data dictionary from force volume data at x,y
-def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None):
+# pass unit_dict=None to not make any calibration transform to spectro_data
+#pass Normal deflection as defl_data to calculate tip sample distance "d".
+#This function is relatively slow, not suitable to get data for whole image, single curves is fine
+def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None, calc_d=False):
     # label_dict = {'Forward':'approach', 'Backward': 'retract'} #rename lines
     #initialize spectroscopy data dictionary
     # data_fd_dict = {'x': np.empty(0), 'y': np.empty(0), 'segment': np.empty(0)}
@@ -166,7 +207,14 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None):
         if spectro_dir == 'retract': #flipped array to ensure data starts from highest x (far away) to lowest x (in contact)
             spectro_data[spectro_dir]['x'] = np.flip(spectro_data[spectro_dir]['x'])
             spectro_data[spectro_dir]['y'] = np.flip(spectro_data[spectro_dir]['y'])
-            
+    
+    # if defl_data != None and unit_dict != None:
+    #     spectro_data = calc_tipsampledistance(spectro_data, defl_data)
+    
+    if calc_d == True: #calculate tip sample distance and insert it as 'd' in spectro_data
+        defl_data = wsxm_getspectro(data, 'Normal deflection', img_dir, x=x, y=y, unit_dict=unit_dict, calc_d=False)
+        spectro_data = calc_tipsampledistance(spectro_data, defl_data)
+    
     # data_fd = pd.DataFrame.from_dict(data_fd_dict)
     # #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # data_dict_param = {}
@@ -178,20 +226,23 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None):
     return spectro_data
 
 # Convert spectroscopy data dictionary to dataframe for plotting and calculate parameter
-# pass unit_dict=None to not make any calibration transform to spectro_data (useful when used in conjunction with wsxm_getspectro
-def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=True, properties=[]):
+# pass unit_dict=None to not make any calibration transform to spectro_data. BE CAREFUL when used in conjunction with wsxm_getspectro,
+#unit transformation might be done twice, make sure to pass unit_dict=None if unit operation already done earlier (eg. in wsxm_getspectro)
+#pass Normal deflection as defl_data to calculate tip sample distance "d"
+def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=True, properties=[], defl_data=None):
     #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # spectro_data = data[channel]['curves'][curv_num]['data']
     spectro_data_cali = copy.deepcopy(spectro_data)
-    for key in spectro_data_cali.keys(): #calibrate
-        if unit_dict == None: #return spectro data without calibration
-            df_spec = convert_spectro2df(spectro_data_cali) 
-        else:
+    
+    if unit_dict != None: #return spectro data without calibration
+        for key in spectro_data_cali.keys(): #calibrate
             spectro_data_cali[key]['y'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*spectro_data_cali[key]['y']) + \
                                             CALIB_DICT[channel][unit_dict[channel]]['offset'] 
             spectro_data_cali[key]['x'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*spectro_data_cali[key]['x']) + \
                                             CALIB_DICT['Z'][unit_dict['Z']]['offset'] #CHECK THIS! THIS ONLY APPLIES FOR SPECTROSCOPY IN Z
-            df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
+        if defl_data != None:
+            spectro_data_cali = calc_tipsampledistance(spectro_data_cali, defl_data)
+    df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
     # print(channel, unit, CALIB_DICT[channel][unit])
     # df_spec['y'] = (CALIB_DICT[channel][unit]['factor']*df_spec['y']) + CALIB_DICT[channel][unit]['offset'] #calibrate
     data_dict_param = {}
@@ -204,9 +255,27 @@ def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=Tru
         
     return df_spec, data_dict_param
 
+#calculate tip sample distance data using normal deflection data and include into spectro_data as 'd' channel.
+#here defl_data is a dictionary similar to spectro_data corresponding to Normal deflection channel
+def calc_tipsampledistance(spectro_data, defl_data):
+    for key in spectro_data.keys():
+        xini_ind = np.argmax(spectro_data[key]['x']) #position furthest from sample
+        kwargs = FUNC_DICT['Normal deflection']['Snap-in distance']['kwargs']
+        spectro_data[key]['d'] = spectro_data[key]['x'] + (defl_data[key]['y']-defl_data[key]['y'][xini_ind]) #tip sample distance
+        snapin_output = spf.snapin(defl_data, **kwargs)
+        if 'index' in snapin_output.keys(): #shift x data such that point of snap-in is taken as zero tip sample distance
+            # print('d', spectro_data[key]['d'][snapin_output['index']], defl_data[key]['y'][xini_ind], xini_ind, snapin_output['index'],
+            #      spectro_data[key]['x'][snapin_output['index']])
+            spectro_data[key]['d'] =  spectro_data[key]['d'] - spectro_data[key]['d'][snapin_output['index']]
+    return spectro_data
+                        
 #convert spectro data dictionary to dataframe for plotting
 def convert_spectro2df(data_dict):
-    data = {'x': np.empty(0), 'y': np.empty(0), 'segment': np.empty(0)}
+    data = {}
+    for k in list(data_dict.values())[0].keys(): #initialize x,y,d if it exists in data_dict
+        data[k] = np.empty(0)
+    data['segment'] = np.empty(0)
+    # data = {'x': np.empty(0), 'y': np.empty(0), 'segment': np.empty(0)}
     for key, val in data_dict.items():
         for k in val.keys():
             data[k] = np.append(data[k], val[k])
@@ -278,6 +347,10 @@ def calc_spectro_prop(data, properties=[]):
                                     spectro_dir = SPECT_DICT[key.split(' ')[3]]
                                     spectro_data[spectro_dir] = {'y': data[channel][key]['data']['ZZ'][:,y,x],
                                                                  'x': data[channel][key]['data']['Z']}
+                                    #flipped array to ensure data starts from highest x (far away) to lowest x (in contact)
+                                    if spectro_dir == 'retract':
+                                        spectro_data[spectro_dir]['x'] = np.flip(spectro_data[spectro_dir]['x'])
+                                        spectro_data[spectro_dir]['y'] = np.flip(spectro_data[spectro_dir]['y'])
                                 param_result = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
                                 data_dict_param[param][img_dir]['data']['Z'] = np.append(data_dict_param[param][img_dir]['data']['Z'], 
                                                                                          [param_result['value']])
@@ -335,10 +408,19 @@ def get_imgdata(data_dict_chan, channel, x=None, y=None, z=None, unit_dict=None)
             img_data['ZZ'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['ZZ']) + \
                                 CALIB_DICT[channel][unit]['offset']
     else: #for usual image data
-        img_data['X'] = (CALIB_DICT['X'][unit_dict['X']]['factor']*data_dict_chan['data']['X']) + CALIB_DICT['X'][unit_dict['X']]['offset'] 
-        img_data['Y'] = (CALIB_DICT['Y'][unit_dict['Y']]['factor']*data_dict_chan['data']['Y']) + CALIB_DICT['Y'][unit_dict['Y']]['offset'] 
-        img_data['Z'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*data_dict_chan['data']['Z']) + \
-                            CALIB_DICT[channel][unit_dict[channel]]['offset'] 
+        if unit_dict == None:
+            img_data['X'] = data_dict_chan['data']['X']
+            img_data['Y'] = data_dict_chan['data']['Y']
+            img_data['Z'] = data_dict_chan['data']['Z']
+        else:
+            img_data['X'] = (CALIB_DICT['X'][unit_dict['X']]['factor']*data_dict_chan['data']['X']) + CALIB_DICT['X'][unit_dict['X']]['offset'] 
+            img_data['Y'] = (CALIB_DICT['Y'][unit_dict['Y']]['factor']*data_dict_chan['data']['Y']) + CALIB_DICT['Y'][unit_dict['Y']]['offset']
+            if channel in CALIB_DICT.keys():
+                img_data['Z'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*data_dict_chan['data']['Z']) + \
+                                    CALIB_DICT[channel][unit_dict[channel]]['offset']
+            else: #multiply parameter channel by calibration factors. NOTE! OFFSETS ARE IGNORED HERE! MAY NOT BE CORRECT TO CALIBRATE PARAMS
+                img_data['Z'] = data_dict_chan['data']['Z']*eval(parse_paramunit(channel, unit_dict, evaluate=True))
+            
         # img_data = data_dict_chan['data']['Z']
     # data_mat.append(img_data)
     # return data_mat[0], data_mat[1], data_mat[2]
@@ -356,17 +438,28 @@ def get_imgline(data_dict_chan, channel, x=None, y=None, unit_dict=None):
         img_data['X'] = (CALIB_DICT['X'][unit_dict['X']]['factor']*data_dict_chan['data']['X']) + CALIB_DICT['X'][unit_dict['X']]['offset'] 
         img_data['Y'] = (CALIB_DICT['Y'][unit_dict['Y']]['factor']*data_dict_chan['data']['Y']) + CALIB_DICT['Y'][unit_dict['Y']]['offset'] 
     if x != None:
-        unit = 'V' if unit_dict==None else unit_dict[channel]
         x_pt = np.argmin(abs(img_data['X']-x))
-        img_data['Z'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['Z'][:,x_pt]) + \
-                            CALIB_DICT[channel][unit]['offset'] 
+        if unit_dict == None:
+            img_data['Z'] = data_dict_chan['data']['Z'][:,x_pt]
+        else:
+            if channel in CALIB_DICT.keys():
+                img_data['Z'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*data_dict_chan['data']['Z'][:,x_pt]) + \
+                                    CALIB_DICT[channel][unit_dict[channel]]['offset'] 
+            else: #multiply parameter channel by calibration factors. NOTE! OFFSETS ARE IGNORED HERE! MAY NOT BE CORRECT TO CALIBRATE PARAMS
+                img_data['Z'] = data_dict_chan['data']['Z'][:,x_pt]*eval(parse_paramunit(channel, unit_dict, evaluate=True))
         # x_pt = np.argmin(abs(data_dict_chan['data']['X']-x))
         return img_data['Y'], img_data['Z']#[:,x_pt]
     if y != None:
-        unit = 'V' if unit_dict==None else unit_dict[channel]
+        # unit = 'V' if unit_dict==None else unit_dict[channel]
         y_pt = np.argmin(abs(img_data['Y']-y))
-        img_data['Z'] = (CALIB_DICT[channel][unit]['factor']*data_dict_chan['data']['Z'][y_pt,:]) + \
-                            CALIB_DICT[channel][unit]['offset'] 
+        if unit_dict == None:
+            img_data['Z'] = data_dict_chan['data']['Z'][y_pt,:]
+        else:
+            if channel in CALIB_DICT.keys():
+                img_data['Z'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*data_dict_chan['data']['Z'][y_pt,:]) + \
+                                    CALIB_DICT[channel][unit_dict[channel]]['offset'] 
+            else: #multiply parameter channel by calibration factors. NOTE! OFFSETS ARE IGNORED HERE! MAY NOT BE CORRECT TO CALIBRATE PARAMS
+                img_data['Z'] = data_dict_chan['data']['Z'][y_pt,:]*eval(parse_paramunit(channel, unit_dict, evaluate=True))
         # y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
         return img_data['X'], img_data['Z']#[y_pt,:]
                 

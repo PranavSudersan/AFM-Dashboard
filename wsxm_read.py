@@ -6,7 +6,7 @@ import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from wsxm_analyze import convert_spectro2df, get_imgdata
+from wsxm_analyze import convert_spectro2df, get_imgdata, SPECT_DICT
 from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html, imagedf_to_excel
 import transform_funcs as tsf
 
@@ -18,10 +18,6 @@ WSXM_CHANNEL_DICT = {'top':'Topography', 'ch1': 'Normal force', 'ch2': 'Lateral 
                      'ch12': 'Excitation frequency', 'ch15': 'Amplitude', 'ch16': 'Phase',
                      'adh': 'Adhesion', 'sti': 'Stiffness'
                     }
-
-#rename spectroscopy line to standard names: approach and retract
-SPECT_DICT = {'Forward':'approach', 'Backward': 'retract',
-              'b': 'retract', 'f': 'approach'} 
 
 def wsxm_get_common_files(filepath):
     # filepath = 'data/interdigThiols_tipSi3nN_b_0026.fb.ch1.gsi'
@@ -539,12 +535,11 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
     wsxm_calc_extrachans(data_dict, data_type='3D')
     return data_dict
 
-
-
-#Include into data_dict true amplitude and true phase from the "amplitude" and "phase" channels, 
-#which are in-fact the quadrature and in-phase outputs, respectively,of the lock-in amplifier
+# add additional channels to data_dict
 def wsxm_calc_extrachans(data_dict, data_type):
     channels = data_dict.keys()
+    #Include into data_dict true amplitude and true phase from the "amplitude" and "phase" channels, 
+    #which are in-fact the quadrature and in-phase outputs, respectively,of the lock-in amplifier
     if all(chan in channels for chan in ['Amplitude', 'Phase']) == True:
         amp_data = data_dict['Amplitude']
         phase_data = data_dict['Phase']
@@ -568,11 +563,11 @@ def wsxm_calc_extrachans(data_dict, data_type):
                 
                 data_dict['True Phase']['curves'][amp_i[0]] = {'data':{'approach':{'x':amp_i[1]['data']['approach']['x'],
                                                                                    'y':np.arctan2(amp_i[1]['data']['approach']['y'],
-                                                                                                  phase_i[1]['data']['approach']['y'])
+                                                                                                  phase_i[1]['data']['approach']['y']*180/np.pi)
                                                                                       },
                                                                        'retract':{'x':amp_i[1]['data']['retract']['x'],
                                                                                   'y':np.arctan2(amp_i[1]['data']['retract']['y'],
-                                                                                                 phase_i[1]['data']['retract']['y'])
+                                                                                                 phase_i[1]['data']['retract']['y']*180/np.pi)
                                                                                      }
                                                                           },
                                                                'header':amp_i[1]['header']
@@ -590,7 +585,7 @@ def wsxm_calc_extrachans(data_dict, data_type):
                 data_dict['True Phase'][img_dir] = {'data': {'X':phase_i[1]['data']['X'],
                                                              'Y':phase_i[1]['data']['Y'],
                                                              'Z':np.arctan2(amp_i[1]['data']['Z'],
-                                                                            phase_i[1]['data']['Z'])},
+                                                                            phase_i[1]['data']['Z'])*180/np.pi},
                                                     'header':phase_i[1]['header']
                                                    }
 
@@ -609,13 +604,18 @@ def wsxm_calc_extrachans(data_dict, data_type):
                                                              'Y':phase_i[1]['data']['Y'],
                                                              'Z':phase_i[1]['data']['Z'],
                                                              'ZZ':np.arctan2(amp_i[1]['data']['ZZ'],
-                                                                             phase_i[1]['data']['ZZ'])},
+                                                                             phase_i[1]['data']['ZZ'])*180/np.pi},
                                                     'header':phase_i[1]['header']
                                                    }
     else:
         chan_missing = ['Amplitude', 'Phase'][list(chan in channels for chan in ['Amplitude', 'Phase']).index(False)]
         print(f'True Amplitude/Phase channels not created due to missing channel: {chan_missing}')
-    
+     
+    # add normal deflection channel, to be calibrated in length units
+    if 'Normal force' in channels:
+        data_dict['Normal deflection'] = dict(data_dict['Normal force']) #deep copy of normal force channel
+    else:
+        print(f'Normal deflection channel not created due to missing channel: Normal force')
 
 #reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
 #saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
