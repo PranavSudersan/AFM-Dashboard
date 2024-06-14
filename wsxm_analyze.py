@@ -83,7 +83,7 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
 
 # calibration dictionary for each channel. ADD MORE CHANNELS!
 # add a reference unit as key other than 'factor' and 'offset' in order to get additional calibration
-# values for more units.
+# values for more units. The value refresents the value of the reference unit relative to the actual unit.
 CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0}, 
                                'nN': {'factor':1, 'offset':0},
                               },
@@ -97,7 +97,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                                  'nm': {'factor':1, 'offset':0},
                                 },
               'Excitation frequency': {'V': {'factor':1, 'offset':0},
-                                       'Hz': {'factor':1, 'offset':0}
+                                       'Hz': {'factor':1, 'offset':0, 'Hz': 1},
+                                       'kHz': {'factor':1, 'offset':0, 'Hz': 0.001}
                                        },
               'Phase': {'V': {'factor':1, 'offset':0}
                         },
@@ -228,7 +229,7 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None, calc_d=Fal
 # Convert spectroscopy data dictionary to dataframe for plotting and calculate parameter
 # pass unit_dict=None to not make any calibration transform to spectro_data. BE CAREFUL when used in conjunction with wsxm_getspectro,
 #unit transformation might be done twice, make sure to pass unit_dict=None if unit operation already done earlier (eg. in wsxm_getspectro)
-#pass Normal deflection as defl_data to calculate tip sample distance "d"
+#pass Normal deflection as defl_data (without calibration) to calculate tip sample distance "d"
 def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=True, properties=[], defl_data=None):
     #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # spectro_data = data[channel]['curves'][curv_num]['data']
@@ -240,8 +241,15 @@ def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=Tru
                                             CALIB_DICT[channel][unit_dict[channel]]['offset'] 
             spectro_data_cali[key]['x'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*spectro_data_cali[key]['x']) + \
                                             CALIB_DICT['Z'][unit_dict['Z']]['offset'] #CHECK THIS! THIS ONLY APPLIES FOR SPECTROSCOPY IN Z
-        if defl_data != None:
-            spectro_data_cali = calc_tipsampledistance(spectro_data_cali, defl_data)
+        if defl_data != None: 
+            defl_data_cali = copy.deepcopy(defl_data)
+            for key in defl_data_cali.keys(): #calibrate defl_data first    
+                defl_data_cali[key]['y'] = (CALIB_DICT['Normal deflection'][unit_dict['Normal deflection']]['factor']*defl_data_cali[key]['y']) + \
+                                                CALIB_DICT['Normal deflection'][unit_dict['Normal deflection']]['offset'] 
+                defl_data_cali[key]['x'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*defl_data_cali[key]['x']) + \
+                                                CALIB_DICT['Z'][unit_dict['Z']]['offset']
+            spectro_data_cali = calc_tipsampledistance(spectro_data_cali, defl_data_cali)
+            print(spectro_data_cali['approach']['x'], spectro_data_cali['approach']['d'], defl_data_cali['approach']['y'])
     df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
     # print(channel, unit, CALIB_DICT[channel][unit])
     # df_spec['y'] = (CALIB_DICT[channel][unit]['factor']*df_spec['y']) + CALIB_DICT[channel][unit]['offset'] #calibrate
@@ -463,20 +471,23 @@ def get_imgline(data_dict_chan, channel, x=None, y=None, unit_dict=None):
         # y_pt = np.argmin(abs(data_dict_chan['data']['Y']-y))
         return img_data['X'], img_data['Z']#[y_pt,:]
                 
-def combine_forcevol_data(data, channel_list, label_data=[]):
+def combine_forcevol_data(data, channel_list, label_data=[], unit_dict=None):
     output_all_dict = {}
     for img_dir in ['Forward', 'Backward']:
         output_data = {}
-        z_data_temp = data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['Z']
+        img_data_ini = get_imgdata(data[channel_list[0]][f'Image {img_dir} with Forward Ramps'], channel_list[0],
+                                   unit_dict=unit_dict)
+        z_data_ini = img_data_ini['Z']
+        # z_data_temp = data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['Z']
 
         # z_data_full = np.concatenate([z_data, z_data]) #for both approach and retract for all channels
-        x_len = len(data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['X'])
-        y_len = len(data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['Y'])
-        z_len = len(z_data_temp)
+        x_len =  len(img_data_ini['X']) #len(data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['X'])
+        y_len =  len(img_data_ini['Y']) #len(data[channel_list[0]][f'Image {img_dir} with Forward Ramps']['data']['Y'])
+        z_len = len(z_data_ini)
         # output_data['Z'] = np.reshape([[z_data_full]*(x_len*y_len)], (x_len,y_len,len(z_data_full))).flatten()
         specdir_list = []
         z_list = []
-        z_array_dict = {'Forward': z_data_temp, 'Backward': np.flip(z_data_temp)}
+        z_array_dict = {'Forward': z_data_ini, 'Backward': np.flip(z_data_ini)}
         for spec_dir in ['Forward', 'Backward']:
             specdir_list.append([SPECT_DICT[spec_dir]]*x_len*y_len*z_len)  
             z_list.append(np.concatenate([z_array_dict[spec_dir]]*x_len*y_len))
@@ -496,7 +507,9 @@ def combine_forcevol_data(data, channel_list, label_data=[]):
         for chan in channel_list:
             output_data[chan] = []
             for spec_dir in ['Forward', 'Backward']:
-                output_data[chan].append(data[chan][f'Image {img_dir} with {spec_dir} Ramps']['data']['ZZ'].flatten(order='F'))
+                img_data_i = get_imgdata(data[chan][f'Image {img_dir} with {spec_dir} Ramps'], chan, unit_dict=unit_dict)
+                output_data[chan].append(img_data_i['ZZ'].flatten(order='F'))
+                # output_data[chan].append(data[chan][f'Image {img_dir} with {spec_dir} Ramps']['data']['ZZ'].flatten(order='F'))
                 # print(len(output_data[chan]), output_data[chan][-1].shape,  len(output_data['segment']), len(output_data['segment'][-1]))
             output_data[chan] = np.concatenate(output_data[chan])
         

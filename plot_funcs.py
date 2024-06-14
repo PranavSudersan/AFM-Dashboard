@@ -8,6 +8,7 @@ from matplotlib.colors import ListedColormap
 import seaborn as sns
 import numpy as np
 import io, base64
+import math
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as xlImage
@@ -141,7 +142,7 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
 
 # delete and recreate secondary y axes based on a given yvars and initialise the plot. yax_dict is a dictionary of previously made
 # secondary y axis in the plot, which is compare to create new y axes or recreate everything.
-def plotly_multiyplot_initax(fig, yvars, yax_dict, font_dict=None, height=500, width=1100, 
+def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=None, height=500, width=1100, 
                              margin=dict(t=50, b=0, l=0, r=0)):
     if fig == None:
         fig = go.FigureWidget()
@@ -177,9 +178,10 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, font_dict=None, height=500, w
         yvars_new = [yvar_i for yvar_i in yvars if yvar_i not in yvars_old]
     
     for yvars_i in yvars_new:
+        unit_text = unit_dict[yvars_i] if unit_dict != None else ''
         if i == 0:
             fig.update_layout(yaxis=dict(
-                title_text=yvars_i,                
+                title_text=f"{yvars_i} [{unit_text}]",                
                 showline=True,
                 showgrid=False,
                 zeroline=False,
@@ -191,7 +193,7 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, font_dict=None, height=500, w
             ))
         elif i == 1:
             fig.update_layout({'yaxis2':dict(
-                title_text=yvars_i,                
+                title_text=f"{yvars_i} [{unit_text}]",                
                 showline=True,
                 showgrid=False,
                 zeroline=False,
@@ -206,7 +208,7 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, font_dict=None, height=500, w
             )})
         else:
             fig.update_layout({f'yaxis{i+1}': dict(
-                title_text=yvars_i,
+                title_text=f"{yvars_i} [{unit_text}]",
                 showline=True,
                 showgrid=False,
                 zeroline=False,
@@ -227,7 +229,8 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, font_dict=None, height=500, w
             
 #plotly version of seaborn's pairplot to plot relational xy data in a grid for all cols in data. Diagonal of the gird shows histogram, use
 #nbins to adjust histogram bins
-def plotly_pairplot(data, fig=None, cols=None, hue=None, diag_kind='hist', nbins = 50, font_dict=None):
+def plotly_pairplot(data, fig=None, cols=None, hue=None, diag_kind='hist', nbins = 50, 
+                    font_dict=None, group_cols=None, line_style='lines+markers'):
     # if font_dict == None:
     #     font_dict=dict(family='Arial', size=22, color=THEME_DICT[THEME]['fontcolor'])#color='white')
     if font_dict == None:
@@ -293,11 +296,16 @@ def plotly_pairplot(data, fig=None, cols=None, hue=None, diag_kind='hist', nbins
                 for name, group in data.groupby(hue):
                     if name != hue:
                         color = color_map[name] if color_map is not None else None
-                        unique_combinations = group.groupby(['segment', 'curve number'])
-                        for (segment, curve_number), group2 in unique_combinations:
-                            fig.add_trace(go.Scatter(x=group2[var2], y=group2[var1], mode='lines+markers',
+                        if group_cols == None:
+                            fig.add_trace(go.Scatter(x=group[var2], y=group[var1], mode=line_style,
                                                      marker=dict(color=color, size=5), name=name, showlegend=(i==0 and j==0)),
                                           row=i+1, col=j+1)
+                        else:
+                            unique_combinations = group.groupby(group_cols)#['segment', 'curve number'])
+                            for _, group2 in unique_combinations:
+                                fig.add_trace(go.Scatter(x=group2[var2], y=group2[var1], mode=line_style,
+                                                         marker=dict(color=color, size=5), name=name, showlegend=(i==0 and j==0)),
+                                              row=i+1, col=j+1)
             if j == 0:
                 fig.update_yaxes(title_text=var1, row=i+1, col=j+1,
                                 tickfont=font_dict, secondary_y=False)
@@ -599,26 +607,39 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
         my_cmap[i,:-1] = my_cmap[i,:-1]*alphas[i]+BG*(1.-alphas[i])
     my_cmap = ListedColormap(my_cmap)
     plt.close('all')
+    
     if plot_type == 'line':
         # fig, ax = plt.subplots(6,2, figsize = (10, 30))
-        fig, ax = plt.subplots(len(chan_list),2*len(label_list), figsize = (10*len(label_list), 15))
+        plot_rows = len(chan_list)-1
+        plot_cols = 2*len(label_list)
+        fig, ax = plt.subplots(plot_rows, plot_cols, figsize = (5*plot_cols, 5*plot_rows))
         k = 0
         for i, col_i in enumerate(chan_list):
             print(col_i)
             if col_i != 'Z':
-                g = sns.lineplot(data=output_df_a, x='Z', y=col_i, ax=ax[k][0], estimator='median', errorbar=("pi",prange))
-                g = sns.lineplot(data=output_df_r, x='Z', y=col_i, ax=ax[k][1], estimator='median', errorbar=("pi",prange))
-                ax[k][1].set_ylabel('')
+                for l, label_l in enumerate(label_list):
+                    g = sns.lineplot(data=output_df_a[output_df_a['label']==label_l], 
+                                     x='Z', y=col_i, ax=ax[k][l], estimator='median', errorbar=("pi",prange))
+                    g = sns.lineplot(data=output_df_r[output_df_r['label']==label_l], 
+                                     x='Z', y=col_i, ax=ax[k][l+len(label_list)], estimator='median', errorbar=("pi",prange))
+                    ax[k][l].set_ylabel('')
+                    ax[k][l+len(label_list)].set_ylabel('')
+                    ax[0][l].set_title(f'{label_l}; approach')
+                    ax[0][l+len(label_list)].set_title(f'{label_l}; retract')
+                ax[k][0].set_ylabel(col_i)
                 k += 1
 
         # ax1[0][0].set_title('approach')
         # ax1[0][1].set_title('retract')
-        ax[0][0].set_title('approach')
-        ax[0][1].set_title('retract')
-        fig_html = fig2html(fig, plot_type='matplotlib', width=900, height=3000, pad=0.1)
+        # ax[0][0].set_title('approach')
+        # ax[0][1].set_title('retract')
+        plot_ar = plot_rows/plot_cols #aspect ratio
+        fig_html = fig2html(fig, plot_type='matplotlib', width=1200, height=plot_ar*1200, pad=0.1)
     # fig_html2 = fig2html(fig2, plot_type='matplotlib', width=900, height=1500, pad=0.1)
     elif plot_type == 'histogram':
-        fig, ax = plt.subplots(2*(len(chan_list)-1),2*len(label_list), figsize = (10*len(label_list), 10*(len(chan_list)-1)))
+        plot_rows = math.comb(len(chan_list),2)
+        plot_cols = 2*len(label_list)
+        fig, ax = plt.subplots(plot_rows, plot_cols, figsize = (5*plot_cols, 5*plot_rows))
         # fig2, ax2 = plt.subplots(3,2, figsize = (10, 15))
         k = 0
         for i, col_i in enumerate(chan_list):          
@@ -648,7 +669,7 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
         # ax2[0][0].set_title('approach')
         # ax2[0][1].set_title('retract')
         # fig_html1 = fig2html(fig1, plot_type='matplotlib', width=900, height=3000, pad=0.1)
-        plot_ar = 2*(len(chan_list)-1)/2*len(label_list) #aspect ratio
+        plot_ar = plot_rows/plot_cols #aspect ratio
         fig_html = fig2html(fig, plot_type='matplotlib', width=1200, height=plot_ar*1200, pad=0.1)
     
     plt.close()

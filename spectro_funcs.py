@@ -22,7 +22,12 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
         adhesion = f_zero - fadh_ymin
         fit_x = np.array([data_x[0], data_x[ind_min], data_x[ind_min]])
         fit_y = np.array([f_zero, f_zero, fadh_ymin])
-        return {'value': adhesion, 'segment': segment, 'x': fit_x, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
+        if 'd' in force_data[segment].keys():
+            data_d = force_data[segment]['d']
+            fit_d = np.array([data_d[0], data_d[ind_min], data_d[ind_min]])
+            return {'value': adhesion, 'segment': segment, 'x': fit_x, 'd': fit_d, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
+        else:
+            return {'value': adhesion, 'segment': segment, 'x': fit_x, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
     elif method == 'fitzero':
         # try:
         p, res, rank, sing, rcond = np.polyfit(data_x[ind_maxs], data_y[ind_maxs], fit_order, full=True)
@@ -40,7 +45,14 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
         f_zero = data_y[:zero_pts].mean() #CHECK THIS
         # f_zero = zero_y.mean()
         # f_min = data_y[ind_min]
-        return {'value': adhesion, 'segment': segment,  'x': fit_x, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
+        if 'd' in force_data[segment].keys():
+            data_d = force_data[segment]['d']
+            zero_d = np.linspace(data_d[0], data_d[ind_min], 100)
+            fadh_d = data_d[ind_min]
+            fit_d = np.append(zero_d, [fadh_d, fadh_d])
+            return {'value': adhesion, 'segment': segment,  'x': fit_x, 'd': fit_d, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
+        else:
+            return {'value': adhesion, 'segment': segment,  'x': fit_x, 'y': fit_y, 'zero': f_zero, 'min': fadh_ymin}
         # except Exception as e:
         #     return {'value': 0, 'segment': segment, 'x': [], 'y': []}
 
@@ -77,11 +89,11 @@ def snapin(defl_data, min_percentile, fit_order):
     # # ind_max = np.argmax(amp_sobel)
     # try:
     if ind_min == 0:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
+        return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'index': 0}
     else:
         ind_maxs = np.where(data_y[:ind_min]>=np.percentile(data_y[:ind_min],min_percentile))[0]
         if len(ind_maxs) <= fit_order+1:
-            return {'value': 0, 'segment': segment, 'x': [], 'y': []}
+            return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'index': 0}
         else:
             # # testmin_x, testmin_y = test_x[ind_max], test_y[ind_max]
             # # poly = np.poly1d([-amp_sobel[ind_max], testmin_y-(-amp_sobel[ind_max]*testmin_x)])
@@ -104,8 +116,14 @@ def snapin(defl_data, min_percentile, fit_order):
 
             fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
             fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
-
-            return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': ind_min}
+            if 'd' in defl_data[segment].keys():
+                data_d = defl_data[segment]['d']
+                fit_d_all = np.linspace(data_d[0], data_d[ind_min], 100)
+                snapin_d = data_d[ind_min]
+                fit_d = np.append(fit_d_all, [snapin_d, snapin_d])
+                return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'd':fit_d, 'y': fit_y, 'index': ind_min}
+            else:
+                return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': ind_min}
     # except Exception as e:
     #     return {'value': 0, 'segment': segment, 'x': [], 'y': []}
 
@@ -128,7 +146,7 @@ def stiffness(force_data, fit_order):
     idx_min = np.argmin(force_data[segment]['y'])
     # try:
     if len(force_data[segment]['x'][idx_min:]) <= fit_order+1:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
+        return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd': []}
     else:          
         data_x, data_y = force_data[segment]['x'][idx_min:], force_data[segment]['y'][idx_min:]
         p, res, rank, sing, rcond = np.polyfit(data_x, data_y, fit_order, full=True) #2nd order fit 
@@ -137,13 +155,19 @@ def stiffness(force_data, fit_order):
         p_tan = [2*p[0]*x0+p[1], y0-(p[1]*x0)-(2*p[0]*x0**2)] #tangent slope equation
         poly2 = np.poly1d(p_tan)
         n_data = len(data_x)
-        fit_x_all = np.linspace(data_x[0], data_y[-1], n_data*10)
+        fit_x_all = np.linspace(data_x[0], data_x[-1], n_data*10) #CHECK!!
         fit_y_all = poly2(fit_x_all)
         fitind_min = np.argmin(abs(fit_y_all-data_y.min()))
         fitind_max = np.argmin(abs(fit_y_all-data_y.max()))
         fit_x = fit_x_all[fitind_min:fitind_max]
         fit_y = fit_y_all[fitind_min:fitind_max]
-        return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'y': fit_y}
+        if 'd' in force_data[segment].keys():
+            data_d = force_data[segment]['d'][idx_min:]
+            fit_d_all = np.linspace(data_d[0], data_d[-1], n_data*10)
+            fit_d = fit_d_all[fitind_min:fitind_max]
+            return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'd': fit_d, 'y': fit_y}
+        else:
+            return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'y': fit_y}
     # except Exception as e:
     #     return {'value': 0, 'segment': segment, 'x': [], 'y': []}
 
@@ -226,8 +250,17 @@ def ampslope(amp_data, filter_size, method, max_percentile, change):
     fitind_max = max([fitind1, fitind2])
     fit_x = fit_x_all[fitind_min:fitind_max]
     fit_y = fit_y_all[fitind_min:fitind_max]
-    
-    return {'value': abs(slope), 'segment': segment, 'x': fit_x, 'y': fit_y}
+    if 'd' in amp_data[segment].keys(): #IMPROVE!
+        amp_data_d = amp_data[segment]['d']
+        fitind3 = np.argmin(abs(amp_data_d-fit_x_all[fitind_min]))
+        fitind4 = np.argmin(abs(amp_data_d-fit_x_all[fitind_max]))
+        # fit_d = np.linspace(amp_data_d[fitind3], amp_data_d[fitind4], len(fit_y))
+        # fit_d_all = np.interp(np.linspace(0,1,n_data*10), np.linspace(0,1,len(amp_data_d)), amp_data_d)
+        fit_d_all = np.linspace(amp_data_d[0], amp_data_d[-1], n_data*10) #DOES NOT WORK WELL WITH 'd'
+        fit_d = fit_d_all[fitind_min:fitind_max]
+        return {'value': abs(slope), 'segment': segment, 'x': fit_x, 'd': fit_d, 'y': fit_y}
+    else:
+        return {'value': abs(slope), 'segment': segment, 'x': fit_x, 'y': fit_y}
 
 #sigmoidal fit amplitude data to get "growth rate"
 def ampgrowth(amp_data):
@@ -248,6 +281,10 @@ def ampgrowth(amp_data):
         # fitind_max = np.argmin(abs(fit_y_all-test_y.max()))
         # fit_x = fit_x_all[fitind_min:fitind_max]
         # fit_y = fit_y_all[fitind_min:fitind_max]
-        return {'value': popt[2], 'segment': segment, 'x': fit_x, 'y': fit_y}
+        if 'd' in amp_data[segment].keys():
+            fit_d = -amp_data[segment]['d']
+            return {'value': popt[2], 'segment': segment, 'x': fit_x, 'd': fit_d, 'y': fit_y}
+        else:
+            return {'value': popt[2], 'segment': segment, 'x': fit_x, 'y': fit_y}
     except Exception as e:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': []}
+        return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd': []}
