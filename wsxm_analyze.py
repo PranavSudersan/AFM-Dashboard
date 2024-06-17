@@ -37,8 +37,10 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                             },
                               },
              'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
-                                                        'kwargs': {'min_percentile': 1, 
-                                                                   'fit_order': 2
+                                                        'kwargs': {'method': 'gradient', #'gradient', 'minima'
+                                                                   'min_percentile': 1, 
+                                                                   'fit_order': 2,
+                                                                   'back_pts': 10
                                                                   },
                                                         'plot type': 'line',
                                                         'unit': '[Normal deflection]'
@@ -249,7 +251,7 @@ def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=Tru
                 defl_data_cali[key]['x'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*defl_data_cali[key]['x']) + \
                                                 CALIB_DICT['Z'][unit_dict['Z']]['offset']
             spectro_data_cali = calc_tipsampledistance(spectro_data_cali, defl_data_cali)
-            print(spectro_data_cali['approach']['x'], spectro_data_cali['approach']['d'], defl_data_cali['approach']['y'])
+            # print(spectro_data_cali['approach']['x'], spectro_data_cali['approach']['d'], defl_data_cali['approach']['y'])
     df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
     # print(channel, unit, CALIB_DICT[channel][unit])
     # df_spec['y'] = (CALIB_DICT[channel][unit]['factor']*df_spec['y']) + CALIB_DICT[channel][unit]['offset'] #calibrate

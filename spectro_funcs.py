@@ -69,7 +69,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
 #     # print(idx_min)
 #     return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
-def snapin(defl_data, min_percentile, fit_order):
+def snapin(defl_data, method, min_percentile, fit_order, back_pts):
     # min_percentile = 1
     # fit_order = 2
     segment = 'approach'
@@ -80,48 +80,71 @@ def snapin(defl_data, min_percentile, fit_order):
     # #this method works well when the jump in points is very fast, no points in between.
     # n_data = len(test_x)
     # tol_ind = int(thresh*n_data) #tolerance
-    ind_min = np.argmin(data_y)
-    # ind_min = np.argmax(test_y_filt_sobel)
+    if method == 'minima':
+        ind_min = np.argmin(data_y)
+        # ind_min = np.argmax(test_y_filt_sobel)
 
-    # amp_sobel = ndimage.sobel(test_y[:ind_min+tol_ind]) #sobel transform
-    # # amp_sobel = ndimage.sobel(test_y) #sobel transform
-    # # amp_sobel = ndimage.sobel(test_y_filt) #sobel transform
-    # # ind_max = np.argmax(amp_sobel)
-    # try:
-    if ind_min == 0:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'index': 0}
-    else:
-        ind_maxs = np.where(data_y[:ind_min]>=np.percentile(data_y[:ind_min],min_percentile))[0]
-        if len(ind_maxs) <= fit_order+1:
+        # amp_sobel = ndimage.sobel(test_y[:ind_min+tol_ind]) #sobel transform
+        # # amp_sobel = ndimage.sobel(test_y) #sobel transform
+        # # amp_sobel = ndimage.sobel(test_y_filt) #sobel transform
+        # # ind_max = np.argmax(amp_sobel)
+        # try:
+        if ind_min == 0:
             return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'index': 0}
         else:
-            # # testmin_x, testmin_y = test_x[ind_max], test_y[ind_max]
-            # # poly = np.poly1d([-amp_sobel[ind_max], testmin_y-(-amp_sobel[ind_max]*testmin_x)])
-            # # poly = np.poly1d([slope_avg, testmin_y-(slope_avg*testmin_x)])
-            # if len(ind_maxs) == 1:
-            #     slope_avg = -amp_sobel[ind_maxs].mean()
-            #     testmin_x, testmin_y = test_x[ind_maxs].mean(), test_y[ind_maxs].mean()
-            #     poly = np.poly1d([slope_avg, testmin_y-(slope_avg*testmin_x)])
-            # else:
-            p, res, rank, sing, rcond = np.polyfit(data_x[ind_maxs], data_y[ind_maxs], fit_order, full=True)
-            poly = np.poly1d(p)
+            ind_maxs = np.where(data_y[:ind_min]>=np.percentile(data_y[:ind_min],min_percentile))[0]
+            if len(ind_maxs) <= fit_order+1:
+                return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'index': 0}
+            else:
+                # # testmin_x, testmin_y = test_x[ind_max], test_y[ind_max]
+                # # poly = np.poly1d([-amp_sobel[ind_max], testmin_y-(-amp_sobel[ind_max]*testmin_x)])
+                # # poly = np.poly1d([slope_avg, testmin_y-(slope_avg*testmin_x)])
+                # if len(ind_maxs) == 1:
+                #     slope_avg = -amp_sobel[ind_maxs].mean()
+                #     testmin_x, testmin_y = test_x[ind_maxs].mean(), test_y[ind_maxs].mean()
+                #     poly = np.poly1d([slope_avg, testmin_y-(slope_avg*testmin_x)])
+                # else:
+                p, res, rank, sing, rcond = np.polyfit(data_x[ind_maxs], data_y[ind_maxs], fit_order, full=True)
+                poly = np.poly1d(p)
 
-            fit_x_all = np.linspace(data_x[0], data_x[ind_min], 100)
-            fit_y_all = poly(fit_x_all)
+                fit_x_all = np.linspace(data_x[0], data_x[ind_min], 100)
+                fit_y_all = poly(fit_x_all)
 
-            snapin_x = data_x[ind_min]
-            snapin_y0 = data_y[ind_min]
-            snapin_y1 = poly(snapin_x)
-            snapin_distance = snapin_y1-snapin_y0
+                snapin_x = data_x[ind_min]
+                snapin_y0 = data_y[ind_min]
+                snapin_y1 = poly(snapin_x)
+                snapin_distance = snapin_y1-snapin_y0
 
-            fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
-            fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
+                fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
+                fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
+                if 'd' in defl_data[segment].keys():
+                    data_d = defl_data[segment]['d']
+                    fit_d_all = np.linspace(data_d[0], data_d[ind_min], 100)
+                    snapin_d = data_d[ind_min]
+                    fit_d = np.append(fit_d_all, [snapin_d, snapin_d])
+                    return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'd':fit_d, 'y': fit_y, 'index': ind_min}
+                else:
+                    return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': ind_min}
+    elif method == 'gradient':
+        data_y_sobel = ndimage.sobel(data_y) #sobel transform
+        ind_max = np.argmax(data_y_sobel)
+        if ind_max == 0:
+            ind_max = len(data_y)
+        ind_min = np.argmin(data_y_sobel[:ind_max])
+        if ind_min == 0:
+            return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'index': 0}
+        else:
+            if back_pts > ind_min:
+                back_pts = ind_min
+            zero_y =  data_y[ind_min:ind_min-back_pts:-1].max() #max of back_pts before index of high gradient
+            snap_indmin = np.argmin(data_y[ind_min:])+ind_min
+            snapin_distance = zero_y - data_y[snap_indmin]
+            fit_x = np.array([data_x[snap_indmin], data_x[snap_indmin]])
+            fit_y = np.array([data_y[snap_indmin], zero_y])
             if 'd' in defl_data[segment].keys():
                 data_d = defl_data[segment]['d']
-                fit_d_all = np.linspace(data_d[0], data_d[ind_min], 100)
-                snapin_d = data_d[ind_min]
-                fit_d = np.append(fit_d_all, [snapin_d, snapin_d])
-                return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'd':fit_d, 'y': fit_y, 'index': ind_min}
+                fit_d = np.array([data_d[ind_min+1], data_d[ind_min+1]])
+                return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'd':fit_d, 'y': fit_y, 'index': snap_indmin}
             else:
                 return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': ind_min}
     # except Exception as e:

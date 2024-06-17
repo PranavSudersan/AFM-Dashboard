@@ -25,20 +25,25 @@ def wsxm_get_common_files(filepath):
     filename = os.path.basename(filepath)
     # filename_com = os.path.basename(filepath).split('.')[0] #common file name
     match = re.search(r'\_\d{4}', filename) #regex to find 4 digit number in filename
-    filename_com = filename[:match.start()+5]
+    if match == None: #return same file for no matches #CHECK
+        return [filepath] #print(filename)
+    else:
+        filename_com = filename[:match.start()+5]
     # print(filename_com)
     files = []
     for i in os.listdir(path_dir):
         path_i = os.path.join(path_dir,i)
         if os.path.isfile(path_i) and i.startswith(filename_com):
             files.append(path_i)    
-    
+    files.remove(filepath) #make sure filepath is the first item in the list
+    files.insert(0, filepath)
     return files
 
 
 #read WSxM header data
 def wsxm_readheader(file, pos=0, inibyte=100):
-    header_dict = {'Header sections':[]}
+    header_dict = {}
+    title_list = []
     # Find header size
     file.seek(pos, 0)
     data = file.read(inibyte)
@@ -58,10 +63,10 @@ def wsxm_readheader(file, pos=0, inibyte=100):
             # header_name = hd_lst[0].strip()
             # if header_name in header_dict.keys():
             #     header_name = header_name + ' ' + header_dict['Header sections'][-1]
-            header_name = f"{hd_lst[0].strip()} {header_dict['Header sections'][-1]}".strip()
+            header_name = f"{hd_lst[0].strip()} {title_list[-1]}".strip()
             header_dict[header_name] = hd_lst[1].strip()
         elif len(hd_lst) == 1 and hd_lst[0] != '': #collect section tiles in header file
-            header_dict['Header sections'].append(hd_lst[0])
+            title_list.append(hd_lst[0])
     
     pos_new = pos + header_size #bytes read so far
     # print(header_dict)
@@ -102,18 +107,27 @@ def wsxm_readimg(file, header_dict, pos):
     if chan_label == 'Topography': #ignore for topo
         if z_len == 0: #for zero data
             z_calib = 1
+            chan_fact = 1
+            chan_offs = 0
         else:
             z_calib = z_len/(ch_array.max()-ch_array.min())
+            chan_fact = 1
+            chan_offs = 0
     else: #other channel data stored in volts
         z_calib = dsp_voltrange/(2**16)
+        chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+        if chan_label == 'Excitation frequency': #for freq shift
+            chan_offs = 0
+        else:
+            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
     # z_calib2 = z_len/(ch_array.max()-ch_array.min())
     # print(z_calib, z_calib2, z_calib-z_calib2)
     
     #img data dictionary
-    data_dict_chan = {'data': {'Z': z_calib*ch_array.reshape(x_num, y_num),
+    data_dict_chan = {'data': {'Z': chan_offs + (chan_fact*z_calib*ch_array.reshape(x_num, y_num)),
                                'X': x_data,
                                'Y': y_data},
-                      'header': header_dict}
+                      'header': header_dict.copy()}
     
     pos += data_len #bytes read so far
     return data_dict_chan, pos
@@ -166,10 +180,10 @@ def wsxm_readcurves(path):
     #             print(file_num, os.path.basename(path)) 
     #         file_num += 1
     file = open(f'{path}','rb')
-    header_dict, pos = wsxm_readheader(file)
-    data_dict_chan, pos = wsxm_readimg(file, header_dict, pos) 
+    header_dict_top, pos = wsxm_readheader(file)
+    data_dict_chan, pos = wsxm_readimg(file, header_dict_top, pos) 
     
-    data_format = header_dict['Image Data Type [General Info]']
+    data_format = header_dict_top['Image Data Type [General Info]']
     point_length, type_code  = DATA_TYPES[data_format]
     data_dict_curv = {}
     
@@ -185,7 +199,11 @@ def wsxm_readcurves(path):
         #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode!
         # chan_adc2v = 1#20/2**16 #adc to volt converter for 20V DSP, 16 bit resolution
         chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
-        chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+        if y_label == 'Excitation frequency': # For frequency shift
+            chan_offs = 0
+        else:
+            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+        # chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         
         aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point [Control]'].replace('nm','').
                                    replace('(','').replace(')','').split(',')))
@@ -202,7 +220,7 @@ def wsxm_readcurves(path):
         ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
         x_data, y_data = np.split(ch_array[::2], 2), np.split(ch_array[1::2], 2)
         
-        data_dict_curv[curv_ind] = {'header': header_dict, 'data': {}}
+        data_dict_curv[curv_ind] = {'header': header_dict_top.copy() | header_dict.copy(), 'data': {}} #merge header dictionaries
         for i, curv_dir in enumerate(line_order):                    
             data_dict_curv[curv_ind]['data'][curv_dir] = {'x': x_data[i].max()-x_data[i], #reverse x data
                                                           'y': chan_offs+(y_data[i]*chan_fact) #converted to proper units
@@ -252,7 +270,7 @@ def wsxm_readcur(path):
     # while True:
     # file.seek(pos, 0)
     # header_dict, pos = wsxm_readheader(file, pos=pos)
-    if '[Control]' in header_dict['Header sections']:
+    if 'Index of this Curve [Control]' in header_dict.keys(): #for spectroscopy curves
         line_pts = int(header_dict['Number of points [General Info]'])
         line_num = int(header_dict['Number of lines [General Info]'])
         y_label = header_dict['Y axis text [General Info]'].split('[')[0].strip()
@@ -265,7 +283,11 @@ def wsxm_readcur(path):
         #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode!
         # chan_adc2v = 1#20/2**16 #adc to volt converter for 20V DSP, 16 bit resolution
         chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
-        chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+        if y_label == 'Excitation frequency': # For frequency shift
+            chan_offs = 0
+        else:
+            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+        # chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         
         aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point [Control]'].replace('nm','').
                                    replace('(','').replace(')','').split(',')))
@@ -304,8 +326,8 @@ def wsxm_readcur(path):
     # x_data, y_data = np.split(ch_array[::2], 2), np.split(ch_array[1::2], 2)
     if y_label not in data_dict.keys():
         data_dict[y_label] = {'curves':{}, 'image':{}}
-    data_dict[y_label]['curves'][curv_ind] = {'header': header_dict, 'data': {}}
-    if '[Control]' in header_dict['Header sections']: #TODO: make "reverse data" as a function for transformation! Then eliminate if-else
+    data_dict[y_label]['curves'][curv_ind] = {'header': header_dict.copy(), 'data': {}}
+    if 'Index of this Curve [Control]' in header_dict.keys(): #TODO: make "reverse data" as a function for transformation! Then eliminate if-else
         for i, curv_dir in enumerate(line_order):
             data_dict[y_label]['curves'][curv_ind]['data'][curv_dir] = {'x': data_mat[:,2*i].max()-data_mat[:,2*i], #reverse x data
                                                                         'y': chan_offs+(data_mat[:,2*i+1]*chan_fact) #converted to units
@@ -354,9 +376,13 @@ def wsxm_readstp(path, data_dict={}):
     x_dir = header_dict['X scanning direction [General Info]']
     y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
     z_dir = SPECT_DICT[filename.split('.')[-2]]
+    dsp_voltrange = float(header_dict['DSP voltage range [Miscellaneous]'].split(' ')[0])
     # print(z_dir,filename)
-    chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
-    chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+    # chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+    # if chan_label == 'Excitation frequency': # For frequency shift
+    #     chan_offs = 0
+    # else:
+    #     chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
 
     z_data = np.linspace(0, x_len, y_num, endpoint=True) #CHECK THIS
     # print(filename,x_dir,y_dir,z_dir)
@@ -372,21 +398,26 @@ def wsxm_readstp(path, data_dict={}):
     if z_len == 0: #for zero data
         z_calib = 1
     else:
+        # z_calib = chan_fact*dsp_voltrange/(2**16)
         z_calib = z_len/(ch_array.max()-ch_array.min())
-
-    for i in range(x_num):
-        curv_ind = i + 1
+    
+    #create separate curve data for each line (consistent with '1D' data format)
+    for i in range(x_num): 
+        curv_ind = i + 1        
         #data dictionary initialised in a consistant format (also check wsxm_readcurves())
         if chan_label not in data_dict.keys():
             data_dict[chan_label] = {'curves': {}, 'image':{}}
         if curv_ind not in data_dict[chan_label]['curves'].keys():
-            data_dict[chan_label]['curves'][curv_ind] = {'data': {},'header': header_dict}
+            data_dict[chan_label]['curves'][curv_ind] = {'data': {},'header': header_dict.copy()}
+            #insert curve number info into header
+            data_dict[chan_label]['curves'][curv_ind]['header']['Index of this Curve [Control]'] = str(curv_ind) 
+            data_dict[chan_label]['curves'][curv_ind]['header']['Number of Curves in this serie [Control]'] = str(x_num)
         if z_dir not in data_dict[chan_label]['curves'][curv_ind]['data'].keys():
             data_dict[chan_label]['curves'][curv_ind]['data'][z_dir] = {}
         data_dict[chan_label]['curves'][curv_ind]['data'][z_dir]['x'] = z_data.max()-z_data #reverse x data
-        data_dict[chan_label]['curves'][curv_ind]['data'][z_dir]['y'] = z_calib*ch_mat[:][i] #chan_offs+(ch_mat[:][i]*chan_fact)
+        data_dict[chan_label]['curves'][curv_ind]['data'][z_dir]['y'] = (z_calib*ch_mat[:][i]) #chan_offs+(ch_mat[:][i]*chan_fact)
         if x_dir == 'Forward':
-            data_dict[chan_label]['curves'][curv_ind]['data'][z_dir]['y'] = np.flip(z_calib*ch_mat[:][i])
+            data_dict[chan_label]['curves'][curv_ind]['data'][z_dir]['y'] = np.flip((z_calib*ch_mat[:][i]))
 
     file.close()
     return data_dict, chan_label
@@ -398,35 +429,66 @@ def wsxm_readstp(path, data_dict={}):
     
 # Read WSxM 1D spectroscopy data and curves for all available channels
 def wsxm_readspectra(filepath, all_files=False, mute=False):
-    if all_files == True: #find all channels and directions of this measurement
-        filepath_all = wsxm_get_common_files(filepath)
-    else:
-        filepath_all = [filepath]
+    # if all_files == True: #find all channels and directions of this measurement
+    filepath_all = wsxm_get_common_files(filepath)
+    path_ext_f = os.path.splitext(filepath)[1]
     data_dict = {}
+    data_dict_stp = {}
     file_num = 1 #file number
     for path in filepath_all:
+        # print('yo', path, data_dict.keys())
         path_ext = os.path.splitext(path)[1] #file extension
         if all_files==True and mute == False:
             print(file_num, os.path.basename(path)) 
         file_num += 1
-        if path_ext == '.curves': # read *.curves spectroscopy files
-            temp_dict, chan_label = wsxm_readcurves(path)
-        elif path_ext == '.stp': # read *.stp spectroscopy files
-            temp_dict, chan_label = wsxm_readstp(path, data_dict)
-            if chan_label in data_dict.keys(): #ignore data if *.curves already found
-                continue
-        elif path_ext == '.cur': # read *.cur spectroscopy files
-            temp_dict, chan_label = wsxm_readcur(path)
-            if chan_label in data_dict.keys(): #ignore data if *.curves already found
-                continue
-        data_dict[chan_label] = temp_dict[chan_label]
+        if all_files == False and path_ext == path_ext_f: #collect all curve for the same file type (eg. approach/retract)
+            if path_ext == '.curves': # read *.curves spectroscopy files
+                temp_dict, chan_label = wsxm_readcurves(path)
+                data_dict[chan_label] = temp_dict[chan_label].copy()
+            elif path_ext == '.stp': # read *.stp spectroscopy files
+                temp_dict, chan_label = wsxm_readstp(path, data_dict)#data_dict)
+                # if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+                # data_dict[chan_label] = temp_dict[chan_label]
+            elif path_ext == '.cur': # read *.cur spectroscopy files
+                temp_dict, chan_label = wsxm_readcur(path)
+                # if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+                data_dict[chan_label] = temp_dict[chan_label].copy()
+            if path == filepath:
+                chan_label_f = chan_label[:]
+                curv_ind_f = list(temp_dict[chan_label_f]['curves'].keys())[0] #temp_dict[chan_label]['header']['Index of this Curve [Control]']
+        elif all_files == True:
+            if path_ext == '.curves': # read *.curves spectroscopy files
+                temp_dict, chan_label = wsxm_readcurves(path)
+                if chan_label not in data_dict.keys():
+                    data_dict[chan_label] = temp_dict[chan_label].copy()
+                else:
+                    for curv_ind_i in temp_dict[chan_label]['curves'].keys(): #replace with *.curves data even if it already exists (more robust)
+                        data_dict[chan_label]['curves'][curv_ind_i] = temp_dict[chan_label]['curves'][curv_ind_i].copy()
+            elif path_ext == '.stp': # read *.stp spectroscopy files
+                temp_dict, chan_label = wsxm_readstp(path, data_dict_stp)
+                if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+                    data_dict[chan_label] = temp_dict[chan_label].copy()
+                else:
+                    for curv_ind_i in temp_dict[chan_label]['curves'].keys():
+                        if curv_ind_i not in data_dict[chan_label]['curves'].keys():
+                            data_dict[chan_label]['curves'][curv_ind_i] = temp_dict[chan_label]['curves'][curv_ind_i].copy()
+            elif path_ext == '.cur': # read *.cur spectroscopy files
+                temp_dict, chan_label = wsxm_readcur(path)
+                if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+                    data_dict[chan_label] = temp_dict[chan_label].copy()
+                else:
+                    for curv_ind_i in temp_dict[chan_label]['curves'].keys():
+                        if curv_ind_i not in data_dict[chan_label]['curves'].keys():
+                            data_dict[chan_label]['curves'][curv_ind_i] = temp_dict[chan_label]['curves'][curv_ind_i].copy()
+        # data_dict[chan_label] = temp_dict[chan_label]
+        # print('hey', path, filepath)
+        
     
     if all_files == True:
         wsxm_calc_extrachans(data_dict, data_type='1D')
         return data_dict
     else:  #only return the specifc data dictionary for single file if all files are not read
-        curv_ind = list(data_dict[chan_label]['curves'].keys())[0]
-        return data_dict[chan_label]['curves'][curv_ind]
+        return data_dict[chan_label_f]['curves'][curv_ind_f]
             
 # Read WSxM Force volume data
 def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
@@ -462,7 +524,11 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
             z_len = float(header_dict['Z Amplitude [General Info]'].split(' ')[0])
             chan_adc2v = float(header_dict['ADC to V conversion factor [General Info]'].split(' ')[0])
             chan_fact = float(header_dict['Conversion factor 0 for input channel [General Info]'].split(' ')[0])
-            chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
+            if chan_label == 'Excitation frequency': # For frequency shift
+                chan_offs = 0
+            else:
+                chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
+            # chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
                     
             x_data = np.linspace(x_len, 0, x_num, endpoint=True) #if x_dir == 'Backward' else np.linspace(x_len, 0, x_num, endpoint=True)
             y_data = np.linspace(0, y_len, y_num, endpoint=True) #if y_dir == 'Down' else np.linspace(y_len, 0, y_num, endpoint=True)
@@ -561,16 +627,16 @@ def wsxm_calc_extrachans(data_dict, data_type):
                                                                    'header':amp_i[1]['header']
                                                                   }
                 
-                data_dict['True Phase']['curves'][amp_i[0]] = {'data':{'approach':{'x':amp_i[1]['data']['approach']['x'],
+                data_dict['True Phase']['curves'][phase_i[0]] = {'data':{'approach':{'x':phase_i[1]['data']['approach']['x'],
                                                                                    'y':np.arctan2(amp_i[1]['data']['approach']['y'],
                                                                                                   phase_i[1]['data']['approach']['y']*180/np.pi)
                                                                                       },
-                                                                       'retract':{'x':amp_i[1]['data']['retract']['x'],
+                                                                       'retract':{'x':phase_i[1]['data']['retract']['x'],
                                                                                   'y':np.arctan2(amp_i[1]['data']['retract']['y'],
                                                                                                  phase_i[1]['data']['retract']['y']*180/np.pi)
                                                                                      }
                                                                           },
-                                                               'header':amp_i[1]['header']
+                                                               'header':phase_i[1]['header']
                                                               }
         elif data_type == '2D':
             for amp_i, phase_i in zip(amp_data.items(), phase_data.items()):

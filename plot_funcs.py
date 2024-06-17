@@ -71,8 +71,8 @@ def create_discrete_colorscale(n_values, colorlist):
 #secondary y axis created. x, y, line_group, symbol, hover_name and line_dash are passed to px.line (check plotly documentation for that)
 #data must be in "long form", i.e. names to be made into y axis must be inside "multiy_col" column and its corresponding values
 #must be in "y" column. "x" column must contain the common data to be plotted in x axis. Use pandas.melt to convert to long form.
-def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
-                      line_group=None, symbol=None, color=None, line_dash=None, hover_name=None, font_dict=None):
+def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, line_group=None, symbol=None, color=None, 
+                      line_dash=None, hover_name=None, font_dict=None):
     # color_list = ['magenta', 'yellow', 'lime', 'cyan']
     # color_list = ['OrangeRed','Yellow','LimeGreen','Cyan']
     color_list = THEME_DICT[THEME]['axiscolor']
@@ -114,11 +114,13 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
         data_i = data[data[multiy_col]==yvars_i]
         trace_i = px.line(data_i, x=x, y=y, line_group=line_group, symbol=symbol, color=color,
                           hover_name=hover_name, line_dash=line_dash, symbol_sequence = ['circle'])
-        if color == None:
+        if color == None: #follow y axis colors for lines
             trace_i.update_traces(yaxis=f'y{i+1}', line_color=color_list[i],# if color==None else None,
+                                  showlegend = False, name='',
                                   marker=dict(size=1))
-        else:
+        else: #plot coloured traces, ignoring multi y axes colors
             trace_i.update_traces(yaxis=f'y{i+1}', #line_color=color_list[i] if color==None else None,
+                                  showlegend=True if i == 0 else False,
                                   marker=dict(size=1))
         for trace_data_i in trace_i.data:
             fig.add_trace(trace_data_i)
@@ -137,7 +139,13 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None,
                      tickwidth=2.4,
                      tickcolor=THEME_DICT[THEME]['fontcolor']#'white'
                     )
-    
+    # if color != None:
+    fig.update_layout(legend=dict(orientation="h",yanchor="top",y=-0.2,xanchor="center",x=0.5),
+                      showlegend=False if color==None else True
+                     )
+    # else:
+    #     pass
+        # fig.update_layout(showlegend-False)
     return fig, yax_dict
 
 # delete and recreate secondary y axes based on a given yvars and initialise the plot. yax_dict is a dictionary of previously made
@@ -381,6 +389,22 @@ def plotly_pairplot_initax(fig, num, font_dict=None):
                                                         title=''
                                                     )})
     return fig
+
+#eaborn's pairplot to plot relational xy data in a grid for all cols in data.
+def seaborn_pairplot(data, cols=None, hue=None, diag_kind='kde', plot_kws=None, palette=None, #nbins = 50, 
+                    font_dict=None, group_cols=None, line_style='lines+markers'):
+    plt.style.use(THEME_DICT[THEME]['matplotlib'])#"dark_background")
+    plt.rcParams["font.family"] = font_dict['family']
+    plt.rcParams["font.size"] = font_dict['size']
+    if palette == None:
+        color_list = px.colors.qualitative.Plotly[:len(data[hue].unique())]
+    else:
+        color_list = palette
+    g = sns.pairplot(data, vars=cols, hue=hue, diag_kind=diag_kind, palette=color_list,
+                     plot_kws=plot_kws)
+    sns.move_legend(g, 'upper left', bbox_to_anchor=(0, 0), ncols=len(cols)-1)
+    
+    return g.figure
 
 #line plot x vs y grouped by color column of dataframe data.
 def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, symbol=None, 
