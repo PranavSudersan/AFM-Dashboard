@@ -17,7 +17,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
          method = 'simple'
     
     if method == 'simple':
-        f_zero = data_y[:zero_pts].mean() #CHECK THIS
+        f_zero = force_data['approach']['y'][:zero_pts].mean() #CHECK THIS
         fadh_ymin = data_y[ind_min]
         adhesion = f_zero - fadh_ymin
         fit_x = np.array([data_x[0], data_x[ind_min], data_x[ind_min]])
@@ -70,6 +70,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
 #     return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
 def snapin(defl_data, method, min_percentile, fit_order, back_pts):
+    from wsxm_analyze import set_funcdict_kwargs #set kwargs for other params from a parameter output
     # min_percentile = 1
     # fit_order = 2
     segment = 'approach'
@@ -117,6 +118,7 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts):
 
                 fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
                 fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
+                set_funcdict_kwargs(channel='Normal force',param='Stiffness',kwargs={'snapin_index': ind_min})
                 if 'd' in defl_data[segment].keys():
                     data_d = defl_data[segment]['d']
                     fit_d_all = np.linspace(data_d[0], data_d[ind_min], 100)
@@ -137,10 +139,11 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts):
             if back_pts > ind_min:
                 back_pts = ind_min
             zero_y =  data_y[ind_min:ind_min-back_pts:-1].max() #max of back_pts before index of high gradient
-            snap_indmin = np.argmin(data_y[ind_min:])+ind_min
+            snap_indmin = np.argmin(data_y[ind_min:ind_max])+ind_min
             snapin_distance = zero_y - data_y[snap_indmin]
             fit_x = np.array([data_x[snap_indmin], data_x[snap_indmin]])
             fit_y = np.array([data_y[snap_indmin], zero_y])
+            set_funcdict_kwargs(channel='Normal force',param='Stiffness',kwargs={'snapin_index': snap_indmin})
             if 'd' in defl_data[segment].keys():
                 data_d = defl_data[segment]['d']
                 fit_d = np.array([data_d[ind_min+1], data_d[ind_min+1]])
@@ -163,15 +166,17 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts):
 #         return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
 
 #fits a 2nd order polynomial on data after minima and returns the slope of tangent at the end point
-def stiffness(force_data, fit_order):
+def stiffness(force_data, fit_order, snapin_index):
     segment = 'approach'
     fit_order=2
-    idx_min = np.argmin(force_data[segment]['y'])
+    idx_min = snapin_index #np.argmin(force_data[segment]['y'])
     # try:
     if len(force_data[segment]['x'][idx_min:]) <= fit_order+1:
         return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd': []}
     else:          
         data_x, data_y = force_data[segment]['x'][idx_min:], force_data[segment]['y'][idx_min:]
+        # print(len(force_data[segment]['x']), len(force_data[segment]['y']))
+        # print(idx_min, len(data_x), len(data_y))
         p, res, rank, sing, rcond = np.polyfit(data_x, data_y, fit_order, full=True) #2nd order fit 
         poly1 = np.poly1d(p)
         x0, y0 = data_x[-1], poly1(data_x[-1])

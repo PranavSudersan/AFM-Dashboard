@@ -19,24 +19,10 @@ from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, fig2
 #dictionary of functions defined to extract spectroscopy data properties
 #if function outputs other than 'value' is 'x', 'y', set plot type to 'line' below, else, set plot type to
 #however it needs to be plotted as a dictionary for each additional output.
-#TODO unit calibation add here also where necessary
-FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
-                                           'kwargs': {'method': 'simple',
-                                                      'zero_pts': 10,
-                                                      'min_percentile': 1,
-                                                      'fit_order': 2
-                                                     },
-                                           'plot type': 'line',#{'zero':'hline', 'min':'hline'}
-                                           'unit': '[Normal force]'
-                                           },
-                              'Stiffness': {'function': spf.stiffness,
-                                            'kwargs': {'fit_order':2
-                                                      },
-                                            'plot type': 'line',
-                                            'unit': '[Normal force]/[Z]'
-                                            },
-                              },
-             'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
+#IMPORTANT: Channels are reported in this order such than parameters from subsequent channels can use results from
+#the previous channel. Use set_funcdict_kwargs inside spectro_funcs to update the corresponding kwargs of the parameters.
+#Also make sure to process channel data in the same order as FUNC_DICT
+FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                         'kwargs': {'method': 'gradient', #'gradient', 'minima'
                                                                    'min_percentile': 1, 
                                                                    'fit_order': 2,
@@ -46,6 +32,23 @@ FUNC_DICT = {'Normal force': {'Adhesion': {'function': spf.adhesion,
                                                         'unit': '[Normal deflection]'
                                                        }
                                   },
+             'Normal force': {'Adhesion': {'function': spf.adhesion,
+                                           'kwargs': {'method': 'simple',
+                                                      'zero_pts': 10,
+                                                      'min_percentile': 1,
+                                                      'fit_order': 2
+                                                     },
+                                           'plot type': 'line',#{'zero':'hline', 'min':'hline'}
+                                           'unit': '[Normal force]'
+                                           },
+                              'Stiffness': {'function': spf.stiffness,
+                                            'kwargs': {'fit_order':2,
+                                                       'snapin_index': None
+                                                      },
+                                            'plot type': 'line',
+                                            'unit': '[Normal force]/[Z]'
+                                            },
+                              },
              'Amplitude': {'Slope-amp':{'function': spf.ampslope,
                                         'kwargs': {#'range_factor': 0.6,
                                                    'filter_size': 20,
@@ -327,29 +330,40 @@ def calc_spectro_prop(data, properties=[]):
     data_dict_param = {}
     chans = list(data.keys())
     chans.remove('Topography')
-    for channel in chans:
-        params = FUNC_DICT[channel].keys()
-        for param in params:
-            if param in properties:
-                data_dict_param[param] = {}
-                for chan_dir in data[channel].keys():
-                    img_dir = chan_dir.split(' ')[1] #'Forward' or 'Backward'
-                    if img_dir not in data_dict_param[param].keys():
-                        data_dict_param[param][img_dir] = {'data': {'X': data[channel][chan_dir]['data']['X'], 
-                                                                    'Y':  data[channel][chan_dir]['data']['Y'], 
-                                                                    'Z': np.empty(0)},
-                                                           'header':{}
-                                                          }
+    # for chan_dir in data['Topography'].keys():
+    for img_dir in ['Forward', 'Backward']:
+        chan_dir = [key for key in data['Topography'].keys() if key.startswith(f'Image {img_dir}')][0] #dummy channel direction to get X,Y data
+        # img_dir = chan_dir.split(' ')[1] #'Forward' or 'Backward'
+        x_pts = int(data['Topography'][chan_dir]['header']['Number of rows [General Info]'])
+        y_pts = int(data['Topography'][chan_dir]['header']['Number of columns [General Info]'])
+        for y in range(y_pts): #calculated all properties point by point in x,y, since properties can be related to each other for the same x,y
+            for x in range(x_pts):
+                for channel in FUNC_DICT.keys(): #following the order of channels in FUNC_DICT
+                    if channel in chans:
+                # for channel in chans:
+                        params = FUNC_DICT[channel].keys()
+                        for param in params:
+                            if param in properties:
+                                if param not in data_dict_param.keys():
+                                    data_dict_param[param] = {}
+                                # for chan_dir in data[channel].keys():
+                                    # img_dir = chan_dir.split(' ')[1] #'Forward' or 'Backward'
+                                if img_dir not in data_dict_param[param].keys():
+                                    data_dict_param[param][img_dir] = {'data': {'X': data[channel][chan_dir]['data']['X'], 
+                                                                                'Y':  data[channel][chan_dir]['data']['Y'], 
+                                                                                'Z': np.empty(0)},
+                                                                       'header':{}
+                                                                      }
 
-                #get common data from first channel e.g. number of points
-                # channel = FUNC_DICT[params[0]]['channel']
-                # key = list(data[channel].keys())[0]
-                        x_pts = int(data[channel][chan_dir]['header']['Number of rows [General Info]'])
-                        y_pts = int(data[channel][chan_dir]['header']['Number of columns [General Info]'])
-                        for y in range(y_pts):
-                            for x in range(x_pts):
-                                # for param in params:
-                                    # channel = FUNC_DICT[channel][param]['channel']
+                            #get common data from first channel e.g. number of points
+                            # channel = FUNC_DICT[params[0]]['channel']
+                            # key = list(data[channel].keys())[0]
+                                    # x_pts = int(data[channel][chan_dir]['header']['Number of rows [General Info]'])
+                                    # y_pts = int(data[channel][chan_dir]['header']['Number of columns [General Info]'])
+                                    # for y in range(y_pts):
+                                    #     for x in range(x_pts):
+                                            # for param in params:
+                                                # channel = FUNC_DICT[channel][param]['channel']
                                 kwargs = FUNC_DICT[channel][param]['kwargs']
                                 img_keys = [key for key in data[channel].keys() if key.startswith(f'Image {img_dir}')]
                                 spectro_data = {}
@@ -364,11 +378,13 @@ def calc_spectro_prop(data, properties=[]):
                                 param_result = FUNC_DICT[channel][param]['function'](spectro_data, **kwargs)
                                 data_dict_param[param][img_dir]['data']['Z'] = np.append(data_dict_param[param][img_dir]['data']['Z'], 
                                                                                          [param_result['value']])
-                print(f'{param} calculated')
-                # data_dict_spectro[spectro_dir] = adh_data.reshape(x_pts,y_pts)
+                            # print(f'{param} calculated')
+                    # data_dict_spectro[spectro_dir] = adh_data.reshape(x_pts,y_pts)
     for param in data_dict_param.keys():
         for img_dir in data_dict_param[param].keys():
-            data_dict_param[param][img_dir]['data']['Z'] = data_dict_param[param][img_dir]['data']['Z'].reshape(x_pts, y_pts)    
+            data_dict_param[param][img_dir]['data']['Z'] = data_dict_param[param][img_dir]['data']['Z'].reshape(x_pts, y_pts)
+        print(f'{param} calculated')
+    
     return data_dict_param
 
 #get image data in appropriate matrix structure for plotting
@@ -611,19 +627,23 @@ def get_psd_calib(amp_data):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-def get_calib(df_on, df_off, ind):
+def get_calib(df_on, df_off, ind, datarange=(0,1)):
     freq_final = df_on['frequency'].iloc[ind]
     psd_final = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
+    #only take a small window of data (if psd is bad)
+    ind0, ind1 = int(datarange[0]*len(psd_final)), int(datarange[1]*len(psd_final))
+    psd_final = psd_final[ind0:ind1]
+    freq_final = freq_final[ind0:ind1]
     # plt.plot(freq_final, psd_final, 'r')
     # plt.plot(freq_final, df_on['psd'].iloc[ind], 'y', alpha=0.5)
     # plt.plot(freq_final, df_off['psd'].iloc[ind], 'y', alpha=0.5)
     #plt.show()
     psd_data = pd.DataFrame({'Frequency': freq_final, 
                              'final': psd_final, 
-                             'laser on': df_on['psd'].iloc[ind],
-                             'laser off': df_off['psd'].iloc[ind]
+                             'laser on': df_on['psd'].iloc[ind][ind0:ind1],
+                             'laser off': df_off['psd'].iloc[ind][ind0:ind1]
                             })
-    psd_df_long = pd.melt(psd_data, id_vars=['Frequency'], value_vars=['final', 'laser on', 'laser off'],
+    psd_df_long = pd.melt(psd_data, id_vars=['Frequency'], value_vars=['laser on', 'laser off', 'final'],
                          var_name='name', value_name='PSD')
     
     
@@ -653,7 +673,7 @@ def get_calib(df_on, df_off, ind):
     # psd_df_all = pd.concat([psd_df_long, psd_df_fit])
     
     fig = plotly_lineplot(data=psd_df_long, x="Frequency", y="PSD", color="name",
-                         color_discrete_sequence=['red', 'blue', 'skyblue'])#, 'yellow'])
+                         color_discrete_sequence=['blue', 'skyblue', 'red'])#, 'yellow'])
     plotly_dashedlines(plot_type='line',fig=fig, x=freq_fit_range, 
                        y=ftf.lorentzian(freq_fit_range, *popt), line_width=2, name='fit')
     fig.update_layout(legend_title=None)

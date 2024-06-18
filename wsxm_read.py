@@ -586,7 +586,7 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
                 # print(z_calib, chan_adc2v, z_len)
                 
                 #img data dictionary
-                data_dict_chan = {'data': {'ZZ': ch_array.reshape(x_num,y_num,chan_num),
+                data_dict_chan = {'data': {'ZZ': ch_array.reshape(chan_num,y_num,x_num),#(x_num,y_num,chan_num),
                                            'X': x_data,
                                            'Y': y_data,
                                            'Z': z_data
@@ -673,15 +673,15 @@ def wsxm_calc_extrachans(data_dict, data_type):
                                                                              phase_i[1]['data']['ZZ'])*180/np.pi},
                                                     'header':phase_i[1]['header']
                                                    }
-    else:
-        chan_missing = ['Amplitude', 'Phase'][list(chan in channels for chan in ['Amplitude', 'Phase']).index(False)]
-        print(f'True Amplitude/Phase channels not created due to missing channel: {chan_missing}')
+    # else:
+    #     chan_missing = ['Amplitude', 'Phase'][list(chan in channels for chan in ['Amplitude', 'Phase']).index(False)]
+    #     print(f'True Amplitude/Phase channels not created due to missing channel: {chan_missing}')
      
     # add normal deflection channel, to be calibrated in length units
     if 'Normal force' in channels:
         data_dict['Normal deflection'] = dict(data_dict['Normal force']) #deep copy of normal force channel
-    else:
-        print(f'Normal deflection channel not created due to missing channel: Normal force')
+    # else:
+    #     print(f'Normal deflection channel not created due to missing channel: Normal force')
 
 #reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
 #saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
@@ -843,11 +843,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                     filename_com_i = filename_i[:match_i.start()+5]
                     if path_ext_i == '.gsi':
                         data_type_i = '3D'
-                        channel_i = 'Topography' #only check topo image for force volume data
+                        # channel_i = 'Topography' #only check topo image for force volume data
                         # feedback_i = ''
-                        
+                        #Topo channel only taken for image display
                         data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True)
                         header_i = data_dict_chan_i['header']
+                        channel_i = header_i['Acquisition channel [General Info]']
                         # print(header_i)
                         z_pts_i = int(header_i['Number of points per ramp [General Info]'])
                         z_extrema_i = [float(header_i[f'Image {z_pts_i-1:03} [Spectroscopy images ramp value list]'].split(' ')[0]),
@@ -862,7 +863,7 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                         z_max_i = data_dict_chan_i['data']['Z'].max()
                         z_min_i = data_dict_chan_i['data']['Z'].min()
                         z_avg_i = data_dict_chan_i['data']['Z'].mean()
-                        if flatten_chan == 'all' or channel_i in flatten_chan: #channel_i == 'Topography': #only flatten topography images
+                        if flatten_chan == 'all' or 'Topography' in flatten_chan: #channel_i == 'Topography': #only flatten topography images
                             z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
                         else:
                             z_data_i = data_dict_chan_i['data']['Z']
@@ -894,11 +895,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                         # plt.close()
                     else:
                         data_type_i = '2D'
-                        channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
+                        # channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
                         file_tags_i = filename_i[match_i.start()+6:].split('.')
                         
                         data_dict_chan_i = wsxm_readchan(path_i, all_files=False)
                         header_i = data_dict_chan_i['header']
+                        channel_i = header_i['Acquisition channel [General Info]']
                         res_i = header_i['Number of rows [General Info]'] + 'x' + header_i['Number of columns [General Info]']
                         size_i = header_i['X Amplitude [Control]'] + ' x ' + header_i['Y Amplitude [Control]']
                         # feedback_i = header_i['Input channel']
