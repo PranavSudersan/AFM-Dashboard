@@ -69,7 +69,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
 #     # print(idx_min)
 #     return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
-def snapin(defl_data, method, min_percentile, fit_order, back_pts):
+def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax):
     from wsxm_analyze import set_funcdict_kwargs #set kwargs for other params from a parameter output
     # min_percentile = 1
     # fit_order = 2
@@ -130,7 +130,7 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts):
     elif method == 'gradient':
         data_y_sobel = ndimage.sobel(data_y) #sobel transform
         ind_max = np.argmax(data_y_sobel)
-        if ind_max == 0:
+        if ind_max == 0 or findmax == False: #set findmax=False to find global minima in gradient and ignore max gradient value
             ind_max = len(data_y)
         ind_min = np.argmin(data_y_sobel[:ind_max])
         if ind_min == 0:
@@ -146,10 +146,10 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts):
             set_funcdict_kwargs(channel='Normal force',param='Stiffness',kwargs={'snapin_index': snap_indmin})
             if 'd' in defl_data[segment].keys():
                 data_d = defl_data[segment]['d']
-                fit_d = np.array([data_d[ind_min+1], data_d[ind_min+1]])
+                fit_d = np.array([data_d[snap_indmin+1], data_d[snap_indmin+1]])
                 return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'd':fit_d, 'y': fit_y, 'index': snap_indmin}
             else:
-                return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': ind_min}
+                return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 'index': snap_indmin}
     # except Exception as e:
     #     return {'value': 0, 'segment': segment, 'x': [], 'y': []}
 
@@ -234,41 +234,60 @@ def stiffness(force_data, fit_order, snapin_index):
 #amplitude data is filtered (using filter_size) and the high slope value above "max_percentile" are found by sobel transformation 
 #method "average" returns the mean value of the slopes found, while method "fit" makes a linear fit on the original amplitude data
 #where high slope values are found and returns the slope of the fit
-def ampslope(amp_data, filter_size, method, max_percentile, change):
+#method 'minmax' find the minima and maxima and locates the amplitude change in data as factor of it initial standard deviation.
+#change_factor is that factor of change beyond std_dev and num_pts is the number of initial points used to estimate amp extrema
+def ampslope(amp_data, filter_size, method, max_percentile, change, num_pts, change_factor):
     segment = 'approach'  
     amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
-    amp_data_y_filt = ndimage.median_filter(amp_data_y, size=filter_size) #filter
-    amp_data_y_filt_sobel = ndimage.sobel(amp_data_y_filt) #sobel transform on filtered data
-
-    #this method works well when the jump in points is very fast, no points in between.
     n_data = len(amp_data_x)
-    tol_ind = int(filter_size/4) #int(thresh*n_data) #tolerance
-    if change == 'up': #for positive step changes (True Amplitude channel)
-        ind_max = np.argmax(amp_data_y_filt_sobel)
-        amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
-        ind_maxs = np.where(amp_sobel>=np.percentile(amp_sobel,max_percentile))[0]
-        ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
-        if method == 'average' or len(ind_maxs)==1: #average to find slope
-            slope = amp_sobel[ind_maxs].mean()
-            ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
-            poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
-        elif method == 'fit': #linear fit to find slope
-            p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
-            slope = p[0]
-            poly = np.poly1d(p)
-    elif change == 'down': #for negative step changes (Amplitude channel)
-        ind_max = np.argmin(amp_data_y_filt_sobel)
-        amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
-        ind_maxs = np.where(amp_sobel<=np.percentile(amp_sobel,100-max_percentile))[0]
-        ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
-        if method == 'average' or len(ind_maxs)==1: #average to find slope
-            slope = amp_sobel[ind_maxs].mean()
-            ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
-            poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
-        elif method == 'fit': #linear fit to find slope
-            p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
-            slope = p[0]
-            poly = np.poly1d(p)
+    if method == 'minmax':
+        # amp_min, amp_max = amp_data_y.min(), amp_data_y.max()
+        amp_extrema = [np.mean(amp_data_y[:num_pts]), np.mean(amp_data_y[-num_pts:])]
+        amp_min, amp_max = min(amp_extrema), max(amp_extrema)
+        amp_dev = np.std(amp_data_y[:num_pts])
+        amp_change = amp_max-amp_min
+        ind1 = np.argmin(abs(amp_data_y-(amp_min+(amp_dev*change_factor))))
+        ind2 = np.argmin(abs(amp_data_y-(amp_max-(amp_dev*change_factor))))
+        ind_list = [ind1, ind2]
+        ind_list.sort()
+        p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_list[0]:ind_list[1]], amp_data_y[ind_list[0]:ind_list[1]], 1, full=True)
+        slope = p[0]
+        poly = np.poly1d(p)
+        # print(amp_data_y[ind1], amp_data_y[ind2], amp_min+(amp_dev*change_factor))
+        # plt.plot(amp_data_x, amp_data_y,'r.')
+        # plt.plot(amp_data_x[ind_list[0]:ind_list[1]], amp_data_y[ind_list[0]:ind_list[1]],'b')
+    else:
+        amp_data_y_filt = ndimage.median_filter(amp_data_y, size=filter_size) #filter
+        amp_data_y_filt_sobel = ndimage.sobel(amp_data_y_filt) #sobel transform on filtered data
+
+        #this method works well when the jump in points is very fast, no points in between.
+        tol_ind = int(filter_size/4) #int(thresh*n_data) #tolerance
+        if change == 'up': #for positive step changes (True Amplitude channel)
+            ind_max = np.argmax(amp_data_y_filt_sobel)
+            amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
+            ind_maxs = np.where(amp_sobel>=np.percentile(amp_sobel,max_percentile))[0]
+            ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
+            if method == 'average' or len(ind_maxs)==1: #average to find slope
+                slope = amp_sobel[ind_maxs].mean()
+                ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
+                poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
+            elif method == 'fit': #linear fit to find slope
+                p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
+                slope = p[0]
+                poly = np.poly1d(p)
+        elif change == 'down': #for negative step changes (Amplitude channel)
+            ind_max = np.argmin(amp_data_y_filt_sobel)
+            amp_sobel = ndimage.sobel(amp_data_y[:ind_max+tol_ind]) #sobel transform on actual data
+            ind_maxs = np.where(amp_sobel<=np.percentile(amp_sobel,100-max_percentile))[0]
+            ind_maxs = np.arange(ind_maxs.min(), ind_maxs.max()+1,1)
+            if method == 'average' or len(ind_maxs)==1: #average to find slope
+                slope = amp_sobel[ind_maxs].mean()
+                ampmax_x, ampmax_y = amp_data_x[ind_maxs].mean(), amp_data_y[ind_maxs].mean()
+                poly = np.poly1d([-slope, ampmax_y-(-slope*ampmax_x)])
+            elif method == 'fit': #linear fit to find slope
+                p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_maxs], amp_data_y[ind_maxs], 1, full=True)
+                slope = p[0]
+                poly = np.poly1d(p)
 
     fit_x_all = np.linspace(amp_data_x[0], amp_data_x[-1], n_data*10)
     fit_y_all = poly(fit_x_all)
@@ -291,13 +310,21 @@ def ampslope(amp_data, filter_size, method, max_percentile, change):
         return {'value': abs(slope), 'segment': segment, 'x': fit_x, 'y': fit_y}
 
 #sigmoidal fit amplitude data to get "growth rate"
-def ampgrowth(amp_data):
+def ampgrowth(amp_data, change):
     segment = 'approach'  
     amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
-    p0 = [max(amp_data_y), np.median(-amp_data_x),1,min(amp_data_y)] #initial guess
+    amp_min, amp_max = amp_data_y.min(), amp_data_y.max()
+    center_ind = np.argmin(abs(amp_data_y-((amp_min+amp_max)/2)))
     try:
-        popt, pcov = curve_fit(ftf.sigmoid, -amp_data_x, amp_data_y, p0, method='dogbox')    
-        fit_x, fit_y = amp_data_x, ftf.sigmoid(-amp_data_x, *popt)
+        if change == 'up':
+            
+            p0 = [amp_max-amp_min,-amp_data_x[center_ind],1,amp_min] #initial guess
+            popt, pcov = curve_fit(ftf.sigmoid, -amp_data_x, amp_data_y, p0, method='dogbox')    
+            fit_x, fit_y = amp_data_x, ftf.sigmoid(-amp_data_x, *popt)
+        elif change == 'down':
+            p0 = [amp_max-amp_min,amp_data_x[center_ind],1,amp_min] #initial guess
+            popt, pcov = curve_fit(ftf.sigmoid, amp_data_x, amp_data_y, p0, method='dogbox')    
+            fit_x, fit_y = amp_data_x, ftf.sigmoid(amp_data_x, *popt)
         #sigmoidal function method only works for spectroscopy with lots of points, not for force volume with less points
         #the maximum derivative method does not work for spectroscopy with lots of points due to "noise" during the points of max change
         # slope_max = popt[0]*popt[2]/4 #analytical slope maximum expression for sigmoidal curve (at x0)

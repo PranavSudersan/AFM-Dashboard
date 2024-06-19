@@ -6,7 +6,7 @@ def hypotenuse(a,b):
 
 #line-wise flattening of image along the x (fast) axis. order=0 subtracts each line by its mean (simple offset). 
 #order=1,2...subtract a fitted polynomial of that order to each line
-def flatten_line(data, order):
+def flatten_line(data, order, pos_shift=True):
     if len(data['Z'].shape) == 1:
         if order == 0:
             offset = np.mean(data['Z'])
@@ -19,7 +19,10 @@ def flatten_line(data, order):
         else:
             p, res, rank, sing, rcond = np.polyfit(data['X'], data['Z'].T, order, full=True)
             offset = np.array([np.poly1d(p[:,i])(data['X']) for i in range(p.shape[1])])
-    return data['Z']-offset
+    data_flattened = data['Z']-offset
+    if pos_shift == True:
+        data_flattened = data_flattened - data_flattened.min() #shift to make all values positive
+    return data_flattened
 
 #cluster image data using kmeans clustering algorithm. Returns a label image of the same shape, 
 #where label numbers correspond to each cluster: 0, 1, 2 etc.

@@ -107,24 +107,22 @@ def wsxm_readimg(file, header_dict, pos):
     if chan_label == 'Topography': #ignore for topo
         if z_len == 0: #for zero data
             z_calib = 1
-            chan_fact = 1
-            chan_offs = 0
+            # chan_fact = 1
+            # chan_offs = 0
         else:
             z_calib = z_len/(ch_array.max()-ch_array.min())
-            chan_fact = 1
-            chan_offs = 0
+            # chan_fact = 1
+            # chan_offs = 0
     else: #other channel data stored in volts
         z_calib = dsp_voltrange/(2**16)
-        chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+        # chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
         if chan_label == 'Excitation frequency': #for freq shift
-            chan_offs = 0
-        else:
-            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+            z_calib = z_calib * float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
     # z_calib2 = z_len/(ch_array.max()-ch_array.min())
     # print(z_calib, z_calib2, z_calib-z_calib2)
     
     #img data dictionary
-    data_dict_chan = {'data': {'Z': chan_offs + (chan_fact*z_calib*ch_array.reshape(x_num, y_num)),
+    data_dict_chan = {'data': {'Z': z_calib*ch_array.reshape(x_num, y_num),
                                'X': x_data,
                                'Y': y_data},
                       'header': header_dict.copy()}
@@ -523,11 +521,14 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
             y_len = float(header_dict['Y Amplitude [Control]'].split(' ')[0])
             z_len = float(header_dict['Z Amplitude [General Info]'].split(' ')[0])
             chan_adc2v = float(header_dict['ADC to V conversion factor [General Info]'].split(' ')[0])
-            chan_fact = float(header_dict['Conversion factor 0 for input channel [General Info]'].split(' ')[0])
+            
             if chan_label == 'Excitation frequency': # For frequency shift
+                chan_fact = float(header_dict['Conversion factor 0 for input channel [General Info]'].split(' ')[0])
                 chan_offs = 0
             else:
-                chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
+                chan_fact = 1
+                chan_offs = 0
+                # chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
             # chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
                     
             x_data = np.linspace(x_len, 0, x_num, endpoint=True) #if x_dir == 'Backward' else np.linspace(x_len, 0, x_num, endpoint=True)
@@ -629,11 +630,11 @@ def wsxm_calc_extrachans(data_dict, data_type):
                 
                 data_dict['True Phase']['curves'][phase_i[0]] = {'data':{'approach':{'x':phase_i[1]['data']['approach']['x'],
                                                                                    'y':np.arctan2(amp_i[1]['data']['approach']['y'],
-                                                                                                  phase_i[1]['data']['approach']['y']*180/np.pi)
+                                                                                                  phase_i[1]['data']['approach']['y'])*180/np.pi
                                                                                       },
                                                                        'retract':{'x':phase_i[1]['data']['retract']['x'],
                                                                                   'y':np.arctan2(amp_i[1]['data']['retract']['y'],
-                                                                                                 phase_i[1]['data']['retract']['y']*180/np.pi)
+                                                                                                 phase_i[1]['data']['retract']['y'])*180/np.pi
                                                                                      }
                                                                           },
                                                                'header':phase_i[1]['header']

@@ -26,7 +26,8 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                         'kwargs': {'method': 'gradient', #'gradient', 'minima'
                                                                    'min_percentile': 1, 
                                                                    'fit_order': 2,
-                                                                   'back_pts': 10
+                                                                   'back_pts': 10,
+                                                                   'findmax': True
                                                                   },
                                                         'plot type': 'line',
                                                         'unit': '[Normal deflection]'
@@ -50,33 +51,35 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                             },
                               },
              'Amplitude': {'Slope-amp':{'function': spf.ampslope,
-                                        'kwargs': {#'range_factor': 0.6,
-                                                   'filter_size': 20,
+                                        'kwargs': {'filter_size': 20,
                                                    'method': 'fit', #'fit','average'
                                                    'max_percentile': 99,
-                                                   'change': 'up'
+                                                   'change': 'up',
+                                                   'num_pts': 10, 
+                                                   'change_factor': 20
                                                   },
                                         'plot type': 'line',
                                         'unit': '[Amplitude]/[Z]'
                                         },
                            'Growth rate':{'function': spf.ampgrowth,
-                                          'kwargs': {},
+                                          'kwargs': {'change': 'up'},
                                           'plot type': 'line',
                                           'unit': '1/[Z]'
                                         }
                           },
              'True Amplitude': {'True Slope-amp':{'function': spf.ampslope,
-                                                  'kwargs': {#'range_factor': 0.6,
-                                                        'filter_size': 20,
-                                                        'method': 'fit', #'fit','average'
-                                                        'max_percentile': 99,
-                                                        'change': 'down'
-                                                  },
+                                                  'kwargs': {'filter_size': 20,
+                                                             'method': 'fit', #'fit','average'
+                                                             'max_percentile': 99,
+                                                             'change': 'down',
+                                                             'num_pts': 10, 
+                                                             'change_factor': 20
+                                                            },
                                                   'plot type': 'line',
                                                   'unit': '[True Amplitude]/[Z]'
                                                  },
                                 'True Growth rate':{'function': spf.ampgrowth,
-                                                    'kwargs': {},
+                                                    'kwargs': {'change': 'down'},
                                                     'plot type': 'line',
                                                     'unit': '1/[Z]'
                                                    }
@@ -586,20 +589,24 @@ def combine_forcevol_data(data, channel_list, label_data=[], unit_dict=None):
 
 #calibration functions
 
-def get_psd_calib(amp_data):
-    zz_list = []
+def get_psd_calib(amp_data, phase_data):
+    zz_amp_list = []
+    zz_phase_list = []
     for img_dir in amp_data.keys():
         head_data = amp_data[img_dir]['header']
         zz_amp = amp_data[img_dir]['data']['Z']
+        zz_phase = phase_data[img_dir]['data']['Z']
         # xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
 
         # xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
 
         #true amplitude calculated from amp and phase channels
         # zz_i = np.sqrt(np.square(zz_amp) + np.square(zz_phase))
-        zz_list.append(zz_amp)
+        zz_amp_list.append(zz_amp)
+        zz_phase_list.append(zz_amp)
     
-    zz = np.concatenate(zz_list, axis=1)
+    zz_amp_full = np.concatenate(zz_amp_list, axis=1)
+    zz_phase_full = np.concatenate(zz_phase_list, axis=1)
     
     # if img_dir == 'Backward':
     #     print(img_dir)
@@ -607,22 +614,24 @@ def get_psd_calib(amp_data):
     
     # plt.pcolormesh(zz, cmap='afmhot')    
     # plt.colorbar()
-    fig = fig2html(plotly_heatmap(z_mat=zz, x=None, y=None), plot_type='plotly')
+    fig = fig2html(plotly_heatmap(z_mat=zz_amp_full, x=None, y=None), plot_type='plotly')
     # plt.close()
     
     #Obtain Power Spectral Density of data
     #sample_rate = 2*num_pts*float(head_data['X-Frequency'].split(' ')[0])
     sample_rate = float(head_data['Sampling frequency [Miscellaneous]'].split(' ')[0])
-    freq_array, z_pow = signal.periodogram(zz, sample_rate, scaling='density') #power spectral density
-    z_pow_avg = np.average(z_pow, axis=0) #averaged
+    freq_array, z_pow_amp = signal.periodogram(zz_amp_full, sample_rate, scaling='density') #power spectral density
+    freq_array, z_pow_phase = signal.periodogram(zz_phase_full, sample_rate, scaling='density') #power spectral density
+    z_pow_true = z_pow_amp + z_pow_phase #total power corresponding to "true amplitude"
+    z_pow_avg = np.average(z_pow_true, axis=0) #averaged
     z_pow_max = z_pow_avg.max()
     freq_drive = float(head_data['Resonance frequency [Dynamic settings]'].split(' ')[0])
     freq_array_shifted = freq_array + freq_drive
     # plt.plot(freq_array, z_pow_avg)
     # plt.show()
 
-    z = zz.flatten()
-    z_rms = np.sqrt(z.dot(z)/z.size)
+    z = zz_amp_full.flatten()
+    z_rms = np.sqrt(2)*np.sqrt(np.mean(np.square(z))) #rms of true amplitude assuming both "amp' and 'phase" channels are half of power each
     # print(zz.min(), zz.max(), z_rms)
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
@@ -686,7 +695,7 @@ def get_calib(df_on, df_off, ind, datarange=(0,1)):
     k_cant = 2 # N/m
     T = 300 #K
     kb = 1.380649e-23 #J/K
-    V_rms = np.sqrt(fit_dict['area'])
+    V_rms = np.sqrt(fit_dict['area']) #area under PSD is the total power, which is the square of rms value of signal
     corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
     sens = np.sqrt(corr_fac*kb*T/k_cant)/V_rms/1e-9 #nm/V 
 
