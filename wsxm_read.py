@@ -630,11 +630,11 @@ def wsxm_calc_extrachans(data_dict, data_type):
                 
                 data_dict['True Phase']['curves'][phase_i[0]] = {'data':{'approach':{'x':phase_i[1]['data']['approach']['x'],
                                                                                    'y':np.arctan2(amp_i[1]['data']['approach']['y'],
-                                                                                                  phase_i[1]['data']['approach']['y'])*180/np.pi
+                                                                                                  phase_i[1]['data']['approach']['y'])
                                                                                       },
                                                                        'retract':{'x':phase_i[1]['data']['retract']['x'],
                                                                                   'y':np.arctan2(amp_i[1]['data']['retract']['y'],
-                                                                                                 phase_i[1]['data']['retract']['y'])*180/np.pi
+                                                                                                 phase_i[1]['data']['retract']['y'])
                                                                                      }
                                                                           },
                                                                'header':phase_i[1]['header']
@@ -652,7 +652,7 @@ def wsxm_calc_extrachans(data_dict, data_type):
                 data_dict['True Phase'][img_dir] = {'data': {'X':phase_i[1]['data']['X'],
                                                              'Y':phase_i[1]['data']['Y'],
                                                              'Z':np.arctan2(amp_i[1]['data']['Z'],
-                                                                            phase_i[1]['data']['Z'])*180/np.pi},
+                                                                            phase_i[1]['data']['Z'])},
                                                     'header':phase_i[1]['header']
                                                    }
 
@@ -671,7 +671,7 @@ def wsxm_calc_extrachans(data_dict, data_type):
                                                              'Y':phase_i[1]['data']['Y'],
                                                              'Z':phase_i[1]['data']['Z'],
                                                              'ZZ':np.arctan2(amp_i[1]['data']['ZZ'],
-                                                                             phase_i[1]['data']['ZZ'])*180/np.pi},
+                                                                             phase_i[1]['data']['ZZ'])},
                                                     'header':phase_i[1]['header']
                                                    }
     # else:

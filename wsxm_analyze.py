@@ -27,7 +27,8 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                                    'min_percentile': 1, 
                                                                    'fit_order': 2,
                                                                    'back_pts': 10,
-                                                                   'findmax': True
+                                                                   'findmax': True,
+                                                                   'zero': 'max' #'max', 'mean', 'median'
                                                                   },
                                                         'plot type': 'line',
                                                         'unit': '[Normal deflection]'
@@ -110,8 +111,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                                        },
               'Phase': {'V': {'factor':1, 'offset':0}
                         },
-              'True Phase': {'V': {'factor':1, 'offset':0},
-                             '°': {'factor':1, 'offset':0}
+              'True Phase': {'rad': {'factor':1, 'offset':0,},
+                             '°': {'factor':180/np.pi, 'offset':0}
                             },
               'X': {'Å': {'factor':1, 'offset':0, 'nm': 10},
                     'nm': {'factor':1, 'offset':0, 'nm': 1},
@@ -129,6 +130,7 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                              'nm': {'factor':1, 'offset':0, 'nm': 1},
                              'µm': {'factor':1, 'offset':0, 'nm': 0.001}
                             },
+              'Spring constant': {'N/m': {'factor':1, 'offset':0}}
              }
 
 #rename spectroscopy line to standard names: approach and retract
@@ -161,6 +163,10 @@ def set_calibdict_values(channel,unit_kw):
                     CALIB_DICT[channel][key2]['offset'] = value['offset']*(CALIB_DICT[channel][key2][ref_unit[0]]/\
                                                                            CALIB_DICT[channel][key][ref_unit[0]])
     # print(channel, CALIB_DICT[channel])
+    
+def get_calibdict_value(channel,unit):
+    global CALIB_DICT
+    return CALIB_DICT[channel][unit]
 
 #get correct unit for calculated parameters using exisitng channel calibration units
 def parse_paramunit(param, unit_dict, evaluate):

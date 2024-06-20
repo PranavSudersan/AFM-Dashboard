@@ -37,16 +37,21 @@ def set_theme(theme):
 
 # def set_theme(theme):
 #     THEME = 
-#convert matplotlib colormaps to plotly format
-def matplotlib_to_plotly(cmap_name, num=255):
-    cmap = matplotlib.cm.get_cmap(cmap_name)
-    h = 1.0/(num-1)
-    pl_colorscale = []
+#convert matplotlib colormaps to plotly format. set source='plotly' to directly take plotly colourmaps
+def matplotlib_to_plotly(cmap_name, num=255, source='matplotlib', reverse=False):
+    if source == 'matplotlib':
+        cmap = matplotlib.cm.get_cmap(cmap_name)
+        h = 1.0/(num-1)
+        pl_colorscale = []
 
-    for k in range(num):
-        C = list(map(np.uint8, np.array(cmap(k*h)[:3])*255))
-        pl_colorscale.append([k*h, 'rgb'+str((C[0], C[1], C[2]))])
-
+        for k in range(num):
+            C = list(map(np.uint8, np.array(cmap(k*h)[:3])*255))
+            pl_colorscale.append('rgb'+str((C[0], C[1], C[2])))#k*h, 
+    elif source == 'plotly':
+        # endpoints = [0, 1] if reverse == False else [1, 0]
+        pl_colorscale = px.colors.sample_colorscale(cmap_name, np.linspace(0, 1, num))
+    if reverse==True:
+        pl_colorscale = pl_colorscale[::-1]
     return pl_colorscale
 
 #initialize default colourmap "afmhot"
@@ -455,7 +460,7 @@ def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, sym
     return fig
 
 #plot heat map. here x,y are 1d arrays and z is 2d matrix array
-def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', height=400, width=400, font_dict=None):
+def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', height=400, width=480, font_dict=None):
     fig = go.Figure(data=go.Heatmap(z=z_mat, x=x, y=y, type = 'heatmap', colorscale=color, 
                                     zmin=np.percentile(z_mat,1, method='midpoint'),
                                     zmax=np.percentile(z_mat,99, method='midpoint')
@@ -503,11 +508,37 @@ def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', he
         fig.update_layout(font=font_dict,
                           template=THEME_DICT[THEME]['plotly'],#'plotly_dark',
                           autosize=False,
-                          height=400, 
-                          width=1.2*400,
+                          height=height,#400, 
+                          width=width,#1.2*400,
                           plot_bgcolor=THEME_DICT[THEME]['bgcolor'],#"white",
                           margin=dict(t=10,l=10,b=10,r=10))
     return fig
+
+def plotly_3dplot(z_3d, z_colour, x, y, cmap=cm_afmhot, height=700, width=1100, font_dict=None, title=None,
+                 aspectratio_x=1, aspectratio_y=1, aspectratio_z=0.2, nticks_x=4, nticks_y=4, nticks_z=4,
+                  margin=dict(t=50, b=0, l=0, r=0)):
+    if font_dict == None:
+        font_dict=dict(family='Arial',size=16)
+    font_dict['color']=THEME_DICT[THEME]['fontcolor']
+    
+    fig = go.Figure(data=[go.Surface(z=z_3d, surfacecolor=z_colour,
+                                     x=x, y=y, colorscale=cmap, colorbar_tickfont=font_dict,
+                                    cmin=np.percentile(z_colour,1, method='midpoint'),
+                                    cmax=np.percentile(z_colour,99, method='midpoint'))])
+    fig.update_layout(font=font_dict,
+                      template=THEME_DICT[THEME]['plotly'],
+                      plot_bgcolor=THEME_DICT[THEME]['bgcolor'],
+                      title=title,
+                      autosize=False,
+                      width=width, height=height,
+                      margin=margin,#dict(l=65, r=50, b=65, t=90),
+                      scene = {"xaxis": {"nticks": nticks_x},
+                               "yaxis": {"nticks": nticks_y},
+                               "zaxis": {"nticks": nticks_z},
+                               "aspectratio": {"x": aspectratio_x, "y": aspectratio_y, "z": aspectratio_z}
+                              })
+    return fig
+
 
 def plotly_subplots_init(rows, cols, fig=None, specs=None, shared_xaxes=False, shared_yaxes=False, 
                          vertical_spacing=0.05, horizontal_spacing=0.05, font_dict=None,
@@ -535,7 +566,7 @@ def plotly_subplots_init(rows, cols, fig=None, specs=None, shared_xaxes=False, s
                       barmode='overlay', #showlegend=False,
                       width=width, height=height,
                       title=title, #template='plotly_white',  #"plotly", "plotly_white", "plotly_dark", "ggplot2", "seaborn", "simple_white", "none"
-                      margin=dict(t=50, b=0, l=0, r=0)) 
+                      margin=margin) 
     fig.update_annotations(font=font_dict)
 
     for i in range(rows):

@@ -69,7 +69,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
 #     # print(idx_min)
 #     return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
-def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax):
+def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero):
     from wsxm_analyze import set_funcdict_kwargs #set kwargs for other params from a parameter output
     # min_percentile = 1
     # fit_order = 2
@@ -138,7 +138,12 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax):
         else:
             if back_pts > ind_min:
                 back_pts = ind_min
-            zero_y =  data_y[ind_min:ind_min-back_pts:-1].max() #max of back_pts before index of high gradient
+            if zero == 'max': #set method by which "zero deflection" point is estimated 
+                zero_y =  data_y[ind_min:ind_min-back_pts:-1].max() #max of back_pts before index of high gradient
+            elif zero == 'mean':
+                zero_y =  np.mean(data_y[ind_min:ind_min-back_pts:-1]) #mean of back_pts before index of high gradient
+            elif zero == 'median':
+                zero_y =  np.median(data_y[ind_min:ind_min-back_pts:-1]) #median of back_pts before index of high gradient
             snap_indmin = np.argmin(data_y[ind_min:ind_max])+ind_min
             snapin_distance = zero_y - data_y[snap_indmin]
             fit_x = np.array([data_x[snap_indmin], data_x[snap_indmin]])
@@ -244,15 +249,31 @@ def ampslope(amp_data, filter_size, method, max_percentile, change, num_pts, cha
         # amp_min, amp_max = amp_data_y.min(), amp_data_y.max()
         amp_extrema = [np.mean(amp_data_y[:num_pts]), np.mean(amp_data_y[-num_pts:])]
         amp_min, amp_max = min(amp_extrema), max(amp_extrema)
+        if amp_min == amp_extrema[0]:
+            ind_min = 0
+            ind_max = n_data
+        else:
+            ind_min = n_data
+            ind_max = 0
         amp_dev = np.std(amp_data_y[:num_pts])
         amp_change = amp_max-amp_min
-        ind1 = np.argmin(abs(amp_data_y-(amp_min+(amp_dev*change_factor))))
-        ind2 = np.argmin(abs(amp_data_y-(amp_max-(amp_dev*change_factor))))
+        ind_mid = np.argmin(abs(amp_data_y-((amp_max+amp_min)/2)))
+        amp_min_target = amp_min+(amp_dev*change_factor)
+        amp_max_target = amp_max-(amp_dev*change_factor)
+        if ind_mid > ind_min:
+            ind1 = ind_mid - np.argwhere(amp_data_y[ind_mid::-1]<amp_min_target)[0][0] 
+            ind2 = ind_mid + np.argwhere(amp_data_y[ind_mid:]>amp_max_target)[0][0] 
+        else:
+            ind1 = ind_mid - np.argwhere(amp_data_y[ind_mid::-1]>amp_max_target)[0][0] 
+            ind2 = ind_mid + np.argwhere(amp_data_y[ind_mid:]<amp_min_target)[0][0]
         ind_list = [ind1, ind2]
         ind_list.sort()
-        p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_list[0]:ind_list[1]], amp_data_y[ind_list[0]:ind_list[1]], 1, full=True)
-        slope = p[0]
-        poly = np.poly1d(p)
+        if ind_list[1]-ind_list[0]>1:
+            p, res, rank, sing, rcond = np.polyfit(amp_data_x[ind_list[0]:ind_list[1]], amp_data_y[ind_list[0]:ind_list[1]], 1, full=True)
+            slope = p[0]
+            poly = np.poly1d(p)
+        else:
+            return {'value': 0, 'segment': segment, 'x': [], 'd': [], 'y': []}
         # print(amp_data_y[ind1], amp_data_y[ind2], amp_min+(amp_dev*change_factor))
         # plt.plot(amp_data_x, amp_data_y,'r.')
         # plt.plot(amp_data_x[ind_list[0]:ind_list[1]], amp_data_y[ind_list[0]:ind_list[1]],'b')
