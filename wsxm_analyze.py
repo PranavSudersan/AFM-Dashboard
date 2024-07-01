@@ -87,7 +87,10 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                },
              'Excitation frequency': {},
              'Phase': {},
-             'True Phase': {}
+             'True Phase': {},
+             'Amplitude-sample distance': {},
+             'Sample deformation': {},
+             'X-Y components': {}
             }
 
 # calibration dictionary for each channel. ADD MORE CHANNELS!
@@ -109,11 +112,16 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                                        'Hz': {'factor':1, 'offset':0, 'Hz': 1},
                                        'kHz': {'factor':1, 'offset':0, 'Hz': 0.001}
                                        },
-              'Phase': {'V': {'factor':1, 'offset':0}
-                        },
+              'Phase': {'V': {'factor':1, 'offset':0}},
               'True Phase': {'rad': {'factor':1, 'offset':0,},
                              '°': {'factor':180/np.pi, 'offset':0}
                             },
+              'Amplitude-sample distance': {'V': {'factor':1, 'offset':0}, 
+                                            'nm': {'factor':1, 'offset':0}
+                                            },
+              'Sample deformation': {'V': {'factor':1, 'offset':0}, 
+                                     'nm': {'factor':1, 'offset':0}
+                                     },
               'X': {'Å': {'factor':1, 'offset':0, 'nm': 10},
                     'nm': {'factor':1, 'offset':0, 'nm': 1},
                     'µm': {'factor':1, 'offset':0, 'nm': 0.001}
@@ -130,7 +138,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                              'nm': {'factor':1, 'offset':0, 'nm': 1},
                              'µm': {'factor':1, 'offset':0, 'nm': 0.001}
                             },
-              'Spring constant': {'N/m': {'factor':1, 'offset':0}}
+              'Spring constant': {'N/m': {'factor':1, 'offset':0}},
+              'X-Y components': {'V': {'factor':1, 'offset':0}}
              }
 
 #rename spectroscopy line to standard names: approach and retract
@@ -139,7 +148,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
 #also define label name for spectro_data when plotting
 SPECT_DICT = {'Forward': 'approach', 'Backward': 'retract',
               'b': 'retract', 'f': 'approach',
-              'x': 'Piezo position', 'd': 'Tip-sample distance'
+              'x': 'Piezo position', 'd': 'Tip-sample distance',
+              'z': 'Piezo position shifted'
              } 
 
 #update kwargs for FUNCT_DICT
@@ -228,7 +238,7 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None, calc_d=Fal
     
     if calc_d == True: #calculate tip sample distance and insert it as 'd' in spectro_data
         defl_data = wsxm_getspectro(data, 'Normal deflection', img_dir, x=x, y=y, unit_dict=unit_dict, calc_d=False)
-        spectro_data = calc_tipsampledistance(spectro_data, defl_data)
+        spectro_data = calc_tipsampledistance(spectro_data, defl_data, channel)
     
     # data_fd = pd.DataFrame.from_dict(data_fd_dict)
     # #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
@@ -262,7 +272,7 @@ def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=Tru
                                                 CALIB_DICT['Normal deflection'][unit_dict['Normal deflection']]['offset'] 
                 defl_data_cali[key]['x'] = (CALIB_DICT['Z'][unit_dict['Z']]['factor']*defl_data_cali[key]['x']) + \
                                                 CALIB_DICT['Z'][unit_dict['Z']]['offset']
-            spectro_data_cali = calc_tipsampledistance(spectro_data_cali, defl_data_cali)
+            spectro_data_cali = calc_tipsampledistance(spectro_data_cali, defl_data_cali, channel)
             # print(spectro_data_cali['approach']['x'], spectro_data_cali['approach']['d'], defl_data_cali['approach']['y'])
     df_spec = convert_spectro2df(spectro_data_cali) #pd.DataFrame.from_dict(data_fd_dict) #for plotting
     # print(channel, unit, CALIB_DICT[channel][unit])
@@ -279,16 +289,31 @@ def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=Tru
 
 #calculate tip sample distance data using normal deflection data and include into spectro_data as 'd' channel.
 #here defl_data is a dictionary similar to spectro_data corresponding to Normal deflection channel
-def calc_tipsampledistance(spectro_data, defl_data):
+#additionally, also calculated 'amplitude_sample distance" and "sample deformation" data using tip-sample distance data
+def calc_tipsampledistance(spectro_data, defl_data, channel):
     for key in spectro_data.keys():
         xini_ind = np.argmax(spectro_data[key]['x']) #position furthest from sample
         kwargs = FUNC_DICT['Normal deflection']['Snap-in distance']['kwargs']
-        spectro_data[key]['d'] = spectro_data[key]['x'] + (defl_data[key]['y']-defl_data[key]['y'][xini_ind]) #tip sample distance
+        # print(kwargs)
         snapin_output = spf.snapin(defl_data, **kwargs)
-        if 'index' in snapin_output.keys(): #shift x data such that point of snap-in is taken as zero tip sample distance
+        spectro_data[key]['d'] = spectro_data[key]['x'] + defl_data[key]['y']-snapin_output['zero'] #tip sample distance
+        
+        if 'index_min' in snapin_output.keys(): #shift x data such that point of snap-in is taken as zero tip sample distance
             # print('d', spectro_data[key]['d'][snapin_output['index']], defl_data[key]['y'][xini_ind], xini_ind, snapin_output['index'],
             #      spectro_data[key]['x'][snapin_output['index']])
-            spectro_data[key]['d'] =  spectro_data[key]['d'] - spectro_data[key]['d'][snapin_output['index']]
+            spectro_data[key]['d'] =  spectro_data[key]['d'] - spectro_data[key]['d'][snapin_output['index_min']]
+            spectro_data[key]['z'] =  spectro_data[key]['x'] - spectro_data[key]['x'][snapin_output['index_surf']] #shifted piezo distance
+            if channel == 'Sample deformation':
+                spectro_data[key]['y'] = -spectro_data[key]['d'] 
+                if key == 'approach':
+                    spectro_data[key]['y'][:snapin_output['index_min']] = 0
+                elif key == 'retract':
+                    kwargs2 = FUNC_DICT['Normal force']['Adhesion']['kwargs']
+                    adh_output = spf.adhesion(defl_data, **kwargs2)
+                    spectro_data[key]['y'][:adh_output['index']] = 0
+                    
+        if channel == 'Amplitude-sample distance':
+            spectro_data[key]['y'] = spectro_data[key]['d'] - np.absolute(spectro_data[key]['y'])
     return spectro_data
                         
 #convert spectro data dictionary to dataframe for plotting
@@ -642,7 +667,7 @@ def get_psd_calib(amp_data, phase_data):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-def get_calib(df_on, df_off, ind, datarange=(0,1)):
+def get_calib(df_on, df_off, ind, k_lever, T, corr_fac, datarange=(0,1)):
     freq_final = df_on['frequency'].iloc[ind]
     psd_final = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
     #only take a small window of data (if psd is bad)
@@ -698,11 +723,11 @@ def get_calib(df_on, df_off, ind, datarange=(0,1)):
     # print(fit_dict)
 
     Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
-    k_cant = 2 # N/m
-    T = 300 #K
+    # k_lever = 2 # N/m
+    # T = 300 #K
     kb = 1.380649e-23 #J/K
     V_rms = np.sqrt(fit_dict['area']) #area under PSD is the total power, which is the square of rms value of signal
-    corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
-    sens = np.sqrt(corr_fac*kb*T/k_cant)/V_rms/1e-9 #nm/V 
+    # corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
+    sens = np.sqrt(corr_fac*kb*T/k_lever)/V_rms/1e-9 #nm/V 
 
-    return sens, k_cant, Q, V_rms, fig_html
+    return sens, k_lever, Q, V_rms, fig_html

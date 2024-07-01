@@ -19,7 +19,7 @@ WSXM_CHANNEL_DICT = {'top':'Topography', 'ch1': 'Normal force', 'ch2': 'Lateral 
                      'adh': 'Adhesion', 'sti': 'Stiffness'
                     }
 
-def wsxm_get_common_files(filepath):
+def wsxm_get_common_files(filepath, ext=None):
     # filepath = 'data/interdigThiols_tipSi3nN_b_0026.fb.ch1.gsi'
     path_dir = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
@@ -33,6 +33,9 @@ def wsxm_get_common_files(filepath):
     files = []
     for i in os.listdir(path_dir):
         path_i = os.path.join(path_dir,i)
+        path_ext_i = os.path.splitext(path_i)[1] #file extension
+        if ext != None and path_ext_i != ext: #if ext given, skip files dont match the extension
+            continue
         if os.path.isfile(path_i) and i.startswith(filename_com):
             files.append(path_i)    
     files.remove(filepath) #make sure filepath is the first item in the list
@@ -207,6 +210,7 @@ def wsxm_readcurves(path):
                                    replace('(','').replace(')','').split(',')))
         time_f = float(header_dict['Forward plot total time [Control]'].split(' ')[0])
         time_b = float(header_dict['Backward plot total time [Control]'].split(' ')[0])
+        header_dict['Spectroscopy channel'] = y_label #Insert channel name information into dictionary
         
         line_order = ['approach', 'retract']
         if header_dict['First Forward [Miscellaneous]'] == 'No': #CHECK THIS
@@ -308,14 +312,15 @@ def wsxm_readcur(path):
         aqpt_x, aqpt_y = 0, 0
         time_f = 0
         time_b = 0                
-        line_order = [f'{y_label}_1', f'{y_label}_2']
-
+        line_order = [f'{y_label}_{ln_i+1}' for ln_i in range(line_num)] #[f'{y_label}_1', f'{y_label}_2']
+    
+    header_dict['Spectroscopy channel'] = y_label #Insert channel name information into dictionary
     # data_len = line_pts*line_num*2*point_length
     file.seek(pos, 0)
     data = file.read()
     data_list = []
     for ln in data.splitlines():
-        ln_array = ln.decode('latin-1', errors='ignore').strip().split(' ')
+        ln_array = ln.decode('latin-1', errors='ignore').strip().replace('#QNAN','').split(' ')
         # print(ln_array)
         data_list.append(list(map(float,ln_array)))
     data_mat = np.array(data_list) #data matrix   
@@ -364,7 +369,7 @@ def wsxm_readstp(path, data_dict={}):
     filename = os.path.basename(path)
     header_dict, pos = wsxm_readheader(file)
     data_format = header_dict['Image Data Type [General Info]']
-    chan_label = filename.split('_')[-1].split('.')[0] #header_dict['Acquisition channel']
+    
     # line_rate = float(header_dict['X-Frequency'].split(' ')[0])
     x_num = int(header_dict['Number of rows [General Info]'])
     y_num = int(header_dict['Number of columns [General Info]'])
@@ -373,8 +378,18 @@ def wsxm_readstp(path, data_dict={}):
     z_len = float(header_dict['Z Amplitude [General Info]'].split(' ')[0])
     x_dir = header_dict['X scanning direction [General Info]']
     y_dir = header_dict['Y scanning direction [General Info]'] #CHECK Y DIRECTIONS
-    z_dir = SPECT_DICT[filename.split('.')[-2]]
+    file_dirkey = filename.split('.')[-2]
+    if len(file_dirkey) == 1:
+        chan_label = filename.split('_')[-1].split('.')[0] #header_dict['Acquisition channel']
+        z_dir = SPECT_DICT[filename.split('.')[-2]]
+    else:
+        file_dirkey_match = re.search(r'line\_\d{1}', file_dirkey)
+        chan_label = file_dirkey[:file_dirkey_match.start()].split('_')[-1] #header_dict['Acquisition channel']
+        z_dir = SPECT_DICT[x_dir] #TODO: FIX THIS! NOT CORRECT!
+        
     dsp_voltrange = float(header_dict['DSP voltage range [Miscellaneous]'].split(' ')[0])
+
+    header_dict['Spectroscopy channel'] = chan_label #Insert channel name information into dictionary
     # print(z_dir,filename)
     # chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
     # if chan_label == 'Excitation frequency': # For frequency shift
@@ -426,7 +441,7 @@ def wsxm_readstp(path, data_dict={}):
     #     return data_dict[chan_label]['curves'][curv_ind]
     
 # Read WSxM 1D spectroscopy data and curves for all available channels
-def wsxm_readspectra(filepath, all_files=False, mute=False):
+def wsxm_readspectra1(filepath, all_files=False, mute=False):
     # if all_files == True: #find all channels and directions of this measurement
     filepath_all = wsxm_get_common_files(filepath)
     path_ext_f = os.path.splitext(filepath)[1]
@@ -487,9 +502,79 @@ def wsxm_readspectra(filepath, all_files=False, mute=False):
         return data_dict
     else:  #only return the specifc data dictionary for single file if all files are not read
         return data_dict[chan_label_f]['curves'][curv_ind_f]
-            
+
+# Read WSxM 1D spectroscopy data and curves for all available channels
+def wsxm_readspectra(filepath, all_files=False, mute=False):
+    # if all_files == True: #find all channels and directions of this measurement
+    if all_files == True:
+        filepath_all = wsxm_get_common_files(filepath)
+    else:
+        file_ext = os.path.splitext(filepath)[1] #file extension
+        filepath_all = wsxm_get_common_files(filepath, ext=file_ext) #collect all curve for the same file type (eg. approach/retract)
+    data_dict = {}
+    data_dict_stp = {}
+    file_num = 1 #file number
+    for path in filepath_all:
+        # print('yo', path, data_dict.keys())
+        path_ext = os.path.splitext(path)[1] #file extension
+        if mute == False:
+            print(file_num, os.path.basename(path)) 
+        file_num += 1
+        # if all_files == False and path_ext == path_ext_f: #collect all curve for the same file type (eg. approach/retract)
+        #     if path_ext == '.curves': # read *.curves spectroscopy files
+        #         temp_dict, chan_label = wsxm_readcurves(path)
+        #         data_dict[chan_label] = temp_dict[chan_label].copy()
+        #     elif path_ext == '.stp': # read *.stp spectroscopy files
+        #         temp_dict, chan_label = wsxm_readstp(path, data_dict)#data_dict)
+        #         # if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+        #         # data_dict[chan_label] = temp_dict[chan_label]
+        #     elif path_ext == '.cur': # read *.cur spectroscopy files
+        #         temp_dict, chan_label = wsxm_readcur(path)
+        #         # if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+        #         data_dict[chan_label] = temp_dict[chan_label].copy()
+        #     if path == filepath:
+        #         chan_label_f = chan_label[:]
+        #         curv_ind_f = list(temp_dict[chan_label_f]['curves'].keys())[0] #temp_dict[chan_label]['header']['Index of this Curve [Control]']
+        # elif all_files == True:
+        if path_ext == '.curves': # read *.curves spectroscopy files
+            temp_dict, chan_label = wsxm_readcurves(path)
+            if chan_label not in data_dict.keys():
+                data_dict[chan_label] = temp_dict[chan_label].copy()
+            else:
+                for curv_ind_i in temp_dict[chan_label]['curves'].keys(): #replace with *.curves data even if it already exists (more robust)
+                    data_dict[chan_label]['curves'][curv_ind_i] = temp_dict[chan_label]['curves'][curv_ind_i].copy()
+        elif path_ext == '.stp': # read *.stp spectroscopy files
+            temp_dict, chan_label = wsxm_readstp(path, data_dict_stp)
+            if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+                data_dict[chan_label] = temp_dict[chan_label].copy()
+            else:
+                for curv_ind_i in temp_dict[chan_label]['curves'].keys():
+                    if curv_ind_i not in data_dict[chan_label]['curves'].keys():
+                        data_dict[chan_label]['curves'][curv_ind_i] = temp_dict[chan_label]['curves'][curv_ind_i].copy()
+        elif path_ext == '.cur': # read *.cur spectroscopy files
+            temp_dict, chan_label = wsxm_readcur(path)
+            if chan_label not in data_dict.keys(): #ignore data if *.curves already found
+                data_dict[chan_label] = temp_dict[chan_label].copy()
+            else:
+                for curv_ind_i in temp_dict[chan_label]['curves'].keys():
+                    if curv_ind_i not in data_dict[chan_label]['curves'].keys():
+                        data_dict[chan_label]['curves'][curv_ind_i] = temp_dict[chan_label]['curves'][curv_ind_i].copy()
+        # data_dict[chan_label] = temp_dict[chan_label]
+        # print('hey', path, filepath)
+        if path == filepath:
+            chan_label_f = chan_label[:]
+            curv_ind_f = list(temp_dict[chan_label_f]['curves'].keys())[0] #temp_dict[chan_label]['header']['Index of this Curve [Control]']
+
+        
+    
+    if all_files == True:
+        wsxm_calc_extrachans(data_dict, data_type='1D')
+        return data_dict
+    else:  #only return the specifc data dictionary for single file if all files are not read
+        return data_dict[chan_label_f]['curves'][curv_ind_f]
+
 # Read WSxM Force volume data
-def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
+def wsxm_readforcevol(filepath, all_files=False, topo_only=False, mute=False):
     if all_files == True: #find all channels and directions of this measurement
         filepath_all = wsxm_get_common_files(filepath)
     else:
@@ -501,7 +586,7 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False):
         # if path_ext == '.top': #topgraphy data
         #     data_dict['Topography'] = wsxm_readchan(path)
         if path_ext == '.gsi': #force volume data from *.gsi files
-            if all_files==True:
+            if mute==False:
                 print(file_num, os.path.basename(path)) 
             file_num += 1
             file = open(f'{path}','rb')
@@ -681,6 +766,16 @@ def wsxm_calc_extrachans(data_dict, data_type):
     # add normal deflection channel, to be calibrated in length units
     if 'Normal force' in channels:
         data_dict['Normal deflection'] = dict(data_dict['Normal force']) #deep copy of normal force channel
+    #add channel showing distance between the tip's upper amplitude peak and sample (closest distance)
+    if all(c in channels for c in ['Normal deflection', 'Amplitude']) == True and data_type in ['1D', '3D']:
+        if 'True Amplitude' in channels: #choose true amplitude channel if it exists. Otherwise use Amplitude channel (NOT RELIABLE!)
+            data_dict['Amplitude-sample distance'] = dict(data_dict['True Amplitude'])
+        else:
+            data_dict['Amplitude-sample distance'] = dict(data_dict['Amplitude'])
+    #add channel showing sample deformation
+    if 'Normal deflection' in channels and data_type in ['1D', '3D']:
+        data_dict['Sample deformation'] = dict(data_dict['Normal deflection'])
+        
     # else:
     #     print(f'Normal deflection channel not created due to missing channel: Normal force')
 
@@ -821,7 +916,7 @@ def wsxm_calc_extrachans(data_dict, data_type):
 #reads all wsxm data files in a folder, collects them into a table with thumbnails and file metadata information for browsing.
 #saved the table as a binary and excel file in the folder. The binary file can be later loaded directly to avoid reading all the files again.
 #"refresh" parameter can be used to search the directory again for file and replace existing pickle/excel file list
-def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
+def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=True):
     # folderpath = 'data/'
     # folderpath = filedialog.askdirectory() #use folder picker dialogbox
     picklepath = f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl" #pickled binary file
@@ -831,14 +926,15 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
         file_dict = {'plot': [], 'file':[], 'name': [], 'channel': [], 'type': [], #'feedback': [], #'mode': [], 
                      'size':[], 'resolution':[], 'max':[], 'min':[], 'avg':[], 'time':[], 
                      'extension':[], 'header': [], 'header names':[]}
-        for filename_i in os.listdir(folderpath):
+        for fnum_i, filename_i in enumerate(os.listdir(folderpath)):
+            print(fnum_i, filename_i)
             path_i = os.path.join(folderpath,filename_i)
             if os.path.isfile(path_i):
                 match_i = re.search(r'\_\d{4}', filename_i) #regex to find 4 digit number in filename
                 time_i = datetime.datetime.fromtimestamp(os.path.getmtime(path_i)) #time of file modified (from file metadata)
                 path_ext_i = os.path.splitext(path_i)[1] #file extension
-                if path_ext_i in ['.pkl','.xlsx','.txt']: #ignore pickle and excel and other files
-                    continue
+                if path_ext_i in ['.pkl','.xlsx','.txt', '.psdata', '.xlsx#', '.wsxm', '.MOV']: #ignore pickle and excel and other files
+                    continue #TODO: make a good filter to avoid other files than raw WSxM files
                 if match_i != None:
                     # print(datetime.datetime.now().strftime("%H:%M:%S"), filename_i)
                     filename_com_i = filename_i[:match_i.start()+5]
@@ -847,7 +943,7 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                         # channel_i = 'Topography' #only check topo image for force volume data
                         # feedback_i = ''
                         #Topo channel only taken for image display
-                        data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True)
+                        data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True, mute=True)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Acquisition channel [General Info]']
                         # print(header_i)
@@ -869,17 +965,22 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                         else:
                             z_data_i = data_dict_chan_i['data']['Z']
                         # z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1) #flatten topography
-                        fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
-                                                        y=data_dict_chan_i['data']['Y'],
-                                                        z_mat=z_data_i, style='clean'), 
-                                         plot_type='plotly')
+                        if make_plot == True:
+                            fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                                                            y=data_dict_chan_i['data']['Y'],
+                                                            z_mat=z_data_i, style='clean'), 
+                                             plot_type='plotly')
+                        else:
+                            fig_i = ''
                     elif path_ext_i in ['.curves', '.stp', '.cur']:
                         data_type_i = '1D'
-                        channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
+                        # channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
                         # feedback_i = ''
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
-                        spec_dir_i = list(data_dict_chan_i['data'].keys())
+                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, mute=True)
                         header_i = data_dict_chan_i['header']
+                        channel_i = header_i['Spectroscopy channel']
+                        spec_dir_i = list(data_dict_chan_i['data'].keys())
+                        
                         if path_ext_i == '.stp':                            
                             res_i = header_i['Number of columns [General Info]']
                             size_i = header_i['X Amplitude [Control]']
@@ -889,17 +990,28 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
                         # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                         # fig_i = fig2html(plt.gcf())
-                        z_max_i = spectrodf_i['y'].max()
-                        z_min_i = spectrodf_i['y'].min()
-                        z_avg_i = spectrodf_i['y'].mean()
-                        fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                        z_avg_i = spectrodf_i.groupby(['segment']).mean()['y'].to_dict()
+                        z_min_i = spectrodf_i.groupby(['segment']).min()['y'].to_dict()
+                        z_max_i = spectrodf_i.groupby(['segment']).max()['y'].to_dict()
+                        # z_max_i = spectrodf_i['y'].max()
+                        # z_min_i = spectrodf_i['y'].min()
+                        # z_avg_i = spectrodf_i['y'].mean()
+                        if make_plot == True:
+                            # g_i = plt.plot(spectrodf_i['x'], spectrodf_i['y']) #sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                            # fig_i = fig2html(plt.gcf(), plot_type='matplotlib')
+                            g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                            fig_i = fig2html(g_i.figure, plot_type='matplotlib')
+                            plt.clf()
+                            # fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                        else:
+                            fig_i = ''
                         # plt.close()
                     else:
                         data_type_i = '2D'
                         # channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
                         file_tags_i = filename_i[match_i.start()+6:].split('.')
                         
-                        data_dict_chan_i = wsxm_readchan(path_i, all_files=False)
+                        data_dict_chan_i = wsxm_readchan(path_i, all_files=False, mute=True)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Acquisition channel [General Info]']
                         res_i = header_i['Number of rows [General Info]'] + 'x' + header_i['Number of columns [General Info]']
@@ -916,41 +1028,55 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
                             z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
                         else:
                             z_data_i = data_dict_chan_i['data']['Z']
-                        fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
-                                                        y=data_dict_chan_i['data']['Y'],
-                                                        z_mat=z_data_i, style='clean'), 
-                                         plot_type='plotly')
+                        if make_plot == True:
+                            fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                                                            y=data_dict_chan_i['data']['Y'],
+                                                            z_mat=z_data_i, style='clean'), 
+                                             plot_type='plotly')
+                        else:
+                            fig_i = ''
                         
                         # plt.close()
                 else: #if no match for 4 digit counter found in file name
                     if path_ext_i == '.cur': #read other *.cur file e.g. tuning
                         filename_com_i = filename_i[:-4]
                         data_type_i = '1D'
-                        channel_i = 'Other'
+                        # channel_i = 'Other'
                         data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
                         header_i = data_dict_chan_i['header']
+                        channel_i = header_i['Spectroscopy channel']                        
                         res_i = header_i['Number of points [General Info]']
                         spec_dir_i = list(data_dict_chan_i['data'].keys())
                         size_i = str(data_dict_chan_i['data'][spec_dir_i[0]]['x'].max())  + ' ' + header_i['X axis unit [General Info]']
                         # feedback_i = ''
                         spectrodf_i = convert_spectro2df(data_dict_chan_i['data'])
-                        z_max_i = spectrodf_i['y'].max()
-                        z_min_i = spectrodf_i['y'].min()
-                        z_avg_i = spectrodf_i['y'].mean()
-                        fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                        #calculate statistics for each segment data 
+                        z_avg_i = spectrodf_i.groupby(['segment']).mean()['y'].to_dict()
+                        z_min_i = spectrodf_i.groupby(['segment']).min()['y'].to_dict()
+                        z_max_i = spectrodf_i.groupby(['segment']).max()['y'].to_dict()
+                        # z_max_i = spectrodf_i['y'].max()
+                        # z_min_i = spectrodf_i['y'].min()
+                        # z_avg_i = spectrodf_i['y'].mean()
+                        if make_plot == True:
+                            g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                            fig_i = fig2html(g_i.figure, plot_type='matplotlib')
+                            plt.clf()
+                            # fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                        else:
+                            fig_i = ''
                         # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                         # fig_i = fig2html(plt.gcf())
                         # plt.close()
-    
+                # print(filename_i)
                 file_dict['file'].append(filename_com_i)
                 file_dict['name'].append(filename_i)
                 file_dict['channel'].append(channel_i)
                 file_dict['type'].append(data_type_i)
                 file_dict['size'].append(size_i)
                 file_dict['resolution'].append(res_i)
-                file_dict['max'].append(z_max_i)
-                file_dict['min'].append(z_min_i)
-                file_dict['avg'].append(z_avg_i)
+                file_dict['max'].append(str(z_max_i))
+                file_dict['min'].append(str(z_min_i))
+                file_dict['avg'].append(str(z_avg_i))
                 # file_dict['feedback'].append(feedback_i)
                 file_dict['plot'].append(fig_i)
                 file_dict['extension'].append(path_ext_i)
@@ -964,9 +1090,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[]):
         # file_df.drop(columns=['plot', 'header names']).to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
         file_df['header data'] = file_df['header'].map(str) #convert dictionary column data to string for excel saving
         file_df.sort_values(by=['time'], inplace=True, ignore_index=True)
-        #save excel file for manual check including images
-        imagedf_to_excel(file_df.drop(columns=['header', 'header names']), 
-                         f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx", img_size=(100, 100))
+        if make_plot == True:
+            #save excel file for manual check including images
+            imagedf_to_excel(file_df.drop(columns=['header', 'header names']), 
+                             f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx", img_size=(100, 100))
+        else:
+            file_df.to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
         file_df.drop(columns=['header data'], inplace=True) #remove "stringed" header data
         #save "pickled" binary data of file list for later use   
         file_df.to_pickle(f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl")

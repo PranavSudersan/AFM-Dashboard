@@ -4,7 +4,7 @@ import plotly.express as px
 import PIL
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
+# from matplotlib.colors import ListedColormap
 import seaborn as sns
 import numpy as np
 import io, base64
@@ -21,13 +21,15 @@ THEME_DICT={'dark': {'plotly':'plotly_dark',
                      'matplotlib':'dark_background',
                      'fontcolor': 'white',
                      'bgcolor': 'black',
-                     'axiscolor': ['OrangeRed', 'Cyan', 'LimeGreen','Yellow']
+                     'axiscolor': ['OrangeRed', 'Cyan', 'LimeGreen','Yellow'],
+                     'linecolor': px.colors.qualitative.Light24
                     },
             'light':{'plotly':'plotly_white',
                      'matplotlib':'default',
                      'fontcolor': 'black',
                      'bgcolor': 'white',
-                     'axiscolor': ['Red', 'Blue', 'Green', 'Darkorange']
+                     'axiscolor': ['Red', 'Blue', 'Green', 'Darkorange'],
+                     'linecolor': px.colors.qualitative.Dark24
                     },
            }
 
@@ -76,11 +78,13 @@ def create_discrete_colorscale(n_values, colorlist):
 #secondary y axis created. x, y, line_group, symbol, hover_name and line_dash are passed to px.line (check plotly documentation for that)
 #data must be in "long form", i.e. names to be made into y axis must be inside "multiy_col" column and its corresponding values
 #must be in "y" column. "x" column must contain the common data to be plotted in x axis. Use pandas.melt to convert to long form.
+#error y is the dictionary mapping the main channel name to the error channel name in data
 def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, line_group=None, symbol=None, color=None, 
-                      line_dash=None, hover_name=None, font_dict=None):
+                      line_dash=None, hover_name=None, font_dict=None, errory_dict={}):
     # color_list = ['magenta', 'yellow', 'lime', 'cyan']
     # color_list = ['OrangeRed','Yellow','LimeGreen','Cyan']
     color_list = THEME_DICT[THEME]['axiscolor']
+    linecolor_list = THEME_DICT[THEME]['linecolor']
     # if font_dict == None:
     #     font_dict=dict(family='Arial', size=22, color=THEME_DICT[THEME]['fontcolor'])#color='white')
     if font_dict == None:
@@ -116,9 +120,17 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
         # yvars = yvars_old + yvars_new
 
     for yvars_i in yvars_new:
-        data_i = data[data[multiy_col]==yvars_i]
+        data_i = data[data[multiy_col]==yvars_i].reset_index(drop=True)
+        #include error data
+        if yvars_i in errory_dict.keys():
+            data_i['error'] = data[data[multiy_col]==errory_dict[yvars_i]][y].reset_index(drop=True)
+            error_y = 'error'
+        else:
+            error_y = None
+            
         trace_i = px.line(data_i, x=x, y=y, line_group=line_group, symbol=symbol, color=color,
-                          hover_name=hover_name, line_dash=line_dash, symbol_sequence = ['circle'])
+                          hover_name=hover_name, line_dash=line_dash, symbol_sequence = ['circle'],
+                          error_y=error_y, color_discrete_sequence=linecolor_list)
         if color == None: #follow y axis colors for lines
             trace_i.update_traces(yaxis=f'y{i+1}', line_color=color_list[i],# if color==None else None,
                                   showlegend = False, name='',
@@ -127,8 +139,22 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
             trace_i.update_traces(yaxis=f'y{i+1}', #line_color=color_list[i] if color==None else None,
                                   showlegend=True if i == 0 else False,
                                   marker=dict(size=1))
-        for trace_data_i in trace_i.data:
+        trace_namelist = []
+        for j, trace_data_i in enumerate(trace_i.data):
+            trace_data_i.name = trace_data_i.name.split(",")[0] #show only first item as label
+            if trace_data_i.name in trace_namelist:
+                trace_data_i.showlegend = False
+            trace_namelist.append(trace_data_i.name)
             fig.add_trace(trace_data_i)
+        if color == None:
+            fig.update_layout({f'yaxis{i+1}': dict(linecolor=color_list[i],tickcolor=color_list[i],
+                                                   titlefont_color=color_list[i],
+                                                   tickfont_color=color_list[i])})
+        else:
+            yax_color = THEME_DICT[THEME]['fontcolor']
+            fig.update_layout({f'yaxis{i+1}': dict(linecolor=yax_color,tickcolor=yax_color,
+                                                   titlefont_color=yax_color,
+                                                   tickfont_color=yax_color)})
         yax_dict[yvars_i] = f'y{i+1}'
         i += 1
     
@@ -148,6 +174,13 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
     fig.update_layout(legend=dict(orientation="h",yanchor="top",y=-0.2,xanchor="center",x=0.5),
                       showlegend=False if color==None else True
                      )
+    #error bar formatting
+    for data_i in fig.data:
+        if data_i.error_y.array is not None:
+            C_i = matplotlib.colors.to_rgba(data_i.line.color, alpha=0.5)
+            c_rgba = 'rgba'+str((C_i[0], C_i[1], C_i[2], C_i[3]))
+            data_i.error_y.color = c_rgba
+            data_i.error_y.width = 0
     # else:
     #     pass
         # fig.update_layout(showlegend-False)
@@ -156,7 +189,7 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
 # delete and recreate secondary y axes based on a given yvars and initialise the plot. yax_dict is a dictionary of previously made
 # secondary y axis in the plot, which is compare to create new y axes or recreate everything.
 def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=None, height=500, width=1100, 
-                             margin=dict(t=50, b=0, l=0, r=0)):
+                             margin=dict(t=50, b=0, l=0, r=0), ypos=0):
     if fig == None:
         fig = go.FigureWidget()
         fig.update_layout(font=font_dict,  # font formatting
@@ -201,6 +234,8 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=Non
                 linecolor=color_list[i],
                 linewidth=2.4,                
                 ticks='outside',
+                tickwidth=2.4,
+                tickcolor=color_list[i],
                 titlefont=dict(color=color_list[i], size=font_dict['size'], family=font_dict['family']),
                 tickfont=dict(color=color_list[i])
             ))
@@ -213,6 +248,8 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=Non
                 linecolor=color_list[i],
                 linewidth=2.4,                
                 ticks='outside',
+                tickwidth=2.4,
+                tickcolor=color_list[i],
                 titlefont=dict(color=color_list[i], size=font_dict['size'], family=font_dict['family']),
                 tickfont=dict(color=color_list[i]),
                 overlaying='y',
@@ -229,12 +266,14 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=Non
                 linecolor=color_list[i],
                 linewidth=2.4,
                 ticks='outside',
+                tickwidth=2.4,
+                tickcolor=color_list[i],
                 titlefont=dict(color=color_list[i], size=font_dict['size'], family=font_dict['family']),
                 tickfont=dict(color=color_list[i]),
                 overlaying='y',
                 anchor="free",
                 side='right' if i % 2 == 1 else 'left',
-                position=1 if i % 2 == 1 else 0
+                position=1-ypos if i % 2 == 1 else 0+ypos
             )})
             
         i += 1
@@ -402,12 +441,13 @@ def seaborn_pairplot(data, cols=None, hue=None, diag_kind='kde', plot_kws=None, 
     plt.rcParams["font.family"] = font_dict['family']
     plt.rcParams["font.size"] = font_dict['size']
     if palette == None:
-        color_list = px.colors.qualitative.Plotly[:len(data[hue].unique())]
+        color_list = THEME_DICT[THEME]['linecolor'][:len(data[hue].unique())] #px.colors.qualitative.Plotly[:len(data[hue].unique())]
     else:
         color_list = palette
     g = sns.pairplot(data, vars=cols, hue=hue, diag_kind=diag_kind, palette=color_list,
                      plot_kws=plot_kws)
-    sns.move_legend(g, 'upper left', bbox_to_anchor=(0, 0), ncols=len(cols)-1)
+    sns.move_legend(g, 'upper left', bbox_to_anchor=(0, 0))#, ncols=len(cols)-1)
+    g.figure.set_dpi(300)
     
     return g.figure
 
@@ -460,10 +500,11 @@ def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, sym
     return fig
 
 #plot heat map. here x,y are 1d arrays and z is 2d matrix array
-def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', height=400, width=480, font_dict=None):
+def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', 
+                   height=400, width=480, font_dict=None, opacity=1):
     fig = go.Figure(data=go.Heatmap(z=z_mat, x=x, y=y, type = 'heatmap', colorscale=color, 
                                     zmin=np.percentile(z_mat,1, method='midpoint'),
-                                    zmax=np.percentile(z_mat,99, method='midpoint')
+                                    zmax=np.percentile(z_mat,99, method='midpoint'), opacity=opacity
                                    )
                    )
     # if font_dict == None:
@@ -660,7 +701,7 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
     alphas[2] = 0.4
     for i in range(cmap.N):
         my_cmap[i,:-1] = my_cmap[i,:-1]*alphas[i]+BG*(1.-alphas[i])
-    my_cmap = ListedColormap(my_cmap)
+    my_cmap = matplotlib.colors.ListedColormap(my_cmap)
     plt.close('all')
     
     if plot_type == 'line':
@@ -755,16 +796,16 @@ def fig2html(fig, plot_type, dpi=300, width=200, height=200, pad=0):
 
 #add dashed lines in plot for reference
 def plotly_dashedlines(plot_type,fig, x=None, y=None, yaxis=None, visible=True, 
-                       line_width=3, secondary_y=False, name=None):
+                       line_width=3, secondary_y=False, name=None, line_dash='dash'):
     if plot_type == 'line':
-        fig.add_trace(go.Scatter(x=x, y=y, mode='lines', yaxis=yaxis, line_dash="dash", 
+        fig.add_trace(go.Scatter(x=x, y=y, mode='lines', yaxis=yaxis, line_dash=line_dash, 
                                  line_color=THEME_DICT[THEME]['fontcolor'], line_width=line_width,
-                                 visible=visible, name=name))
+                                 visible=visible, name=name, showlegend=False))
     elif plot_type == 'hline':
-        fig.add_hline(y=y, yref=yaxis, secondary_y=secondary_y, line_dash="dash", 
+        fig.add_hline(y=y, yref=yaxis, secondary_y=secondary_y, line_dash=line_dash, showlegend=False,
                       line_color=THEME_DICT[THEME]['fontcolor'], line_width=line_width, visible=visible)
     elif plot_type == 'vline':
-        fig.add_vline(x=x, line_dash="dash", line_color=THEME_DICT[THEME]['fontcolor'], 
+        fig.add_vline(x=x, line_dash=line_dash, line_color=THEME_DICT[THEME]['fontcolor'], showlegend=False,
                       line_width=line_width, visible=visible)
     
 
