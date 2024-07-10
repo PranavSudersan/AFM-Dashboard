@@ -6,7 +6,7 @@ import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from wsxm_analyze import convert_spectro2df, get_imgdata, SPECT_DICT
+from wsxm_analyze import convert_spectro2df, get_imgdata, get_calibdict_value, SPECT_DICT
 from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html, imagedf_to_excel
 import transform_funcs as tsf
 
@@ -18,6 +18,22 @@ WSXM_CHANNEL_DICT = {'top':'Topography', 'ch1': 'Normal force', 'ch2': 'Lateral 
                      'ch12': 'Excitation frequency', 'ch15': 'Amplitude', 'ch16': 'Phase',
                      'adh': 'Adhesion', 'sti': 'Stiffness'
                     }
+
+EXTRA_CHANNEL_DICT = {'Frequency shift': {'kwargs': {'pts_free': 10, #number of initial points to average to find free amplitude
+                                                     'xc': 0, #x-cordinate of circle center (amp vs phase),
+                                                     'ind_plot': 300, #index of circle data to be highlighted
+                                                     'make_plot': False #set False to avoid plot generations (slightly faster)
+                                                    },
+                                          'plots': {} #circle plots stored for each curve as html for later reference/debugging
+                                         }
+                     }
+
+def set_extrachan_dict(channel, param, value):
+    global EXTRA_CHANNEL_DICT
+    EXTRA_CHANNEL_DICT[channel]['kwargs'][param] = value
+
+def get_extrachan_dict(channel):
+    return EXTRA_CHANNEL_DICT[channel]
 
 def wsxm_get_common_files(filepath, ext=None):
     # filepath = 'data/interdigThiols_tipSi3nN_b_0026.fb.ch1.gsi'
@@ -93,7 +109,6 @@ def wsxm_readimg(file, header_dict, pos):
     # chan_adc2v = 20/2**16
     # chan_fact = int(header_dict['Conversion Factor 00'].split(' ')[0])
     # chan_offs = 0#int(header_dict['Conversion Offset 00'].split(' ')[0])
-
     x_data = np.linspace(x_len, 0, x_num, endpoint=True) #if x_dir == 'Backward' else np.linspace(x_len, 0, x_num, endpoint=True)
     y_data = np.linspace(0, y_len, y_num, endpoint=True) #if y_dir == 'Down' else np.linspace(y_len, 0, y_num, endpoint=True)
     # xx_data, yy_data = np.meshgrid(x_data, y_data)
@@ -108,6 +123,7 @@ def wsxm_readimg(file, header_dict, pos):
     ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
     #dac to volt conversion
     if chan_label == 'Topography': #ignore for topo
+        chan_offs = 0
         if z_len == 0: #for zero data
             z_calib = 1
             # chan_fact = 1
@@ -118,14 +134,19 @@ def wsxm_readimg(file, header_dict, pos):
             # chan_offs = 0
     else: #other channel data stored in volts
         z_calib = dsp_voltrange/(2**16)
+        chan_inv = header_dict['Channel is inverted [General Info]']
+        if chan_inv == 'Yes':
+            z_calib = -z_calib
+        chan_offs = 0
         # chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
         if chan_label == 'Excitation frequency': #for freq shift
-            z_calib = z_calib * float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+            z_calib = z_calib * float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
+            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0]) #CHECK THIS!
     # z_calib2 = z_len/(ch_array.max()-ch_array.min())
     # print(z_calib, z_calib2, z_calib-z_calib2)
     
     #img data dictionary
-    data_dict_chan = {'data': {'Z': z_calib*ch_array.reshape(x_num, y_num),
+    data_dict_chan = {'data': {'Z': z_calib*ch_array.reshape(x_num, y_num) + chan_offs,
                                'X': x_data,
                                'Y': y_data},
                       'header': header_dict.copy()}
@@ -200,10 +221,13 @@ def wsxm_readcurves(path):
         #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode!
         # chan_adc2v = 1#20/2**16 #adc to volt converter for 20V DSP, 16 bit resolution
         chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
-        if y_label == 'Excitation frequency': # For frequency shift
-            chan_offs = 0
-        else:
-            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+        chan_inv = header_dict['Channel is inverted [General Info]']
+        if chan_inv == 'Yes':
+            chan_fact = -chan_fact
+        # if y_label == 'Excitation frequency': # For frequency shift
+        #     chan_offs = 0
+        # else:
+        chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         # chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         
         aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point [Control]'].replace('nm','').
@@ -218,12 +242,15 @@ def wsxm_readcurves(path):
 
         data_len = line_pts*line_num*2*point_length
         file.seek(pos, 0)
+        
+        if line_pts == 0: #skip if no data for curve exists (bug in file format)
+            continue
+        
         bin_data = file.read(data_len)
         ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
         x_data, y_data = np.split(ch_array[::2], 2), np.split(ch_array[1::2], 2)
-        
         data_dict_curv[curv_ind] = {'header': header_dict_top.copy() | header_dict.copy(), 'data': {}} #merge header dictionaries
-        for i, curv_dir in enumerate(line_order):                    
+        for i, curv_dir in enumerate(line_order):
             data_dict_curv[curv_ind]['data'][curv_dir] = {'x': x_data[i].max()-x_data[i], #reverse x data
                                                           'y': chan_offs+(y_data[i]*chan_fact) #converted to proper units
                                                           }
@@ -285,10 +312,13 @@ def wsxm_readcur(path):
         #CHECK THIS FOR SECOND ARRAY! MAY NOT WORK FOR 3D Mode!
         # chan_adc2v = 1#20/2**16 #adc to volt converter for 20V DSP, 16 bit resolution
         chan_fact = float(header_dict['Conversion Factor 00 [General Info]'].split(' ')[0])
-        if y_label == 'Excitation frequency': # For frequency shift
-            chan_offs = 0
-        else:
-            chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
+        chan_inv = header_dict['Channel is inverted [General Info]']
+        if chan_inv == 'Yes':
+            chan_fact = -chan_fact
+        # if y_label == 'Excitation frequency': # For frequency shift
+        #     chan_offs = 0
+        # else:
+        chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         # chan_offs = float(header_dict['Conversion Offset 00 [General Info]'].split(' ')[0])
         
         aqpt_x, aqpt_y = tuple(map(float, header_dict['Acquisition point [Control]'].replace('nm','').
@@ -385,7 +415,7 @@ def wsxm_readstp(path, data_dict={}):
     else:
         file_dirkey_match = re.search(r'line\_\d{1}', file_dirkey)
         chan_label = file_dirkey[:file_dirkey_match.start()].split('_')[-1] #header_dict['Acquisition channel']
-        z_dir = SPECT_DICT[x_dir] #TODO: FIX THIS! NOT CORRECT!
+        z_dir = SPECT_DICT[x_dir] #TODO: FIX THIS! NOT CORRECT! ALSO INVERT CONDITION ADD
         
     dsp_voltrange = float(header_dict['DSP voltage range [Miscellaneous]'].split(' ')[0])
 
@@ -412,7 +442,7 @@ def wsxm_readstp(path, data_dict={}):
         z_calib = 1
     else:
         # z_calib = chan_fact*dsp_voltrange/(2**16)
-        z_calib = z_len/(ch_array.max()-ch_array.min())
+        z_calib = z_len/(ch_array.max()-ch_array.min()) #FIX THIS! PUT OFFSET FOR FREQ ALSO!
     
     #create separate curve data for each line (consistent with '1D' data format)
     for i in range(x_num): 
@@ -609,10 +639,14 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False, mute=False):
             
             if chan_label == 'Excitation frequency': # For frequency shift
                 chan_fact = float(header_dict['Conversion factor 0 for input channel [General Info]'].split(' ')[0])
-                chan_offs = 0
+                chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0]) #0
             else:
                 chan_fact = 1
                 chan_offs = 0
+
+            chan_inv = header_dict['Channel is inverted [General Info]']
+            if chan_inv == 'Yes':
+                chan_fact = -chan_fact
                 # chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
             # chan_offs = float(header_dict['Conversion offset 0 for input channel [General Info]'].split(' ')[0])
                     
@@ -689,6 +723,7 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False, mute=False):
 
 # add additional channels to data_dict
 def wsxm_calc_extrachans(data_dict, data_type):
+    global EXTRA_CHANNEL_DICT
     channels = data_dict.keys()
     #Include into data_dict true amplitude and true phase from the "amplitude" and "phase" channels, 
     #which are in-fact the quadrature and in-phase outputs, respectively,of the lock-in amplifier
@@ -775,6 +810,209 @@ def wsxm_calc_extrachans(data_dict, data_type):
     #add channel showing sample deformation
     if 'Normal deflection' in channels and data_type in ['1D', '3D']:
         data_dict['Sample deformation'] = dict(data_dict['Normal deflection'])
+
+    if all(c in channels for c in ['Amplitude', 'Phase', 'Excitation frequency']) == True and data_type in ['1D']:
+        amp_data = data_dict['Amplitude']
+        phase_data = data_dict['Phase']
+        freq_data= data_dict['Excitation frequency']
+        # header = spectro_data_ini['Excitation frequency']['curves'][curv_ind]['header']
+        data_dict['Amplitude dissipated']= {}
+        data_dict['Energy dissipated'] = {}
+        data_dict['Frequency shift'] = {}
+        data_dict['Amplitude dissipated']['curves'] = {}
+        data_dict['Energy dissipated']['curves'] = {}
+        data_dict['Frequency shift']['curves'] = {}
+        
+        pts_free = EXTRA_CHANNEL_DICT['Frequency shift']['kwargs']['pts_free'] #10 #number of "free amplitude" points to average
+        ind_plot = EXTRA_CHANNEL_DICT['Frequency shift']['kwargs']['ind_plot'] #index of data to save plot
+        make_plot = EXTRA_CHANNEL_DICT['Frequency shift']['kwargs']['make_plot'] #make plot
+        
+        def circle(center, radius, theta_range):   
+            theta = np.linspace(theta_range[0], theta_range[1], 1000)
+            x = center[0] + radius * np.cos(theta)
+            y = center[1] + radius * np.sin(theta)
+            return x, y, theta
+        
+        # Function to find the intersection point on the circle
+        # def find_intersection(center, radius, point):
+        #     h, k = center
+        #     dx, dy = point # Direction vector from center to the point     
+        #     # Calculate the distance from the center to the point
+        #     distance = np.sqrt(dx**2 + dy**2)
+        #     cos_theta = dy/distance
+        #     chord_length = 2*radius*cos_theta             
+        #     # Normalize the direction vector to unit length
+        #     dx /= distance
+        #     dy /= distance            
+        #     # Scale the direction vector by the radius of the circle
+        #     dx *= chord_length#radius
+        #     dy *= chord_length#radius           
+        #     # Calculate the intersection point
+        #     intersection_x = -dx # + h
+        #     intersection_y = -dy # + k 
+        #     return (intersection_x, intersection_y)
+        def find_intersection(center, radius, point):
+            xc, yc = center[0], center[1]
+            rc = radius
+            xp, yp = point[0], point[1]
+            # Direction vector of the line from origin to (xp, yp)
+            D = np.array([xp, yp])            
+            # Coefficients of the quadratic equation
+            a = xp**2 + yp**2
+            b = -2 * (xp * xc + yp * yc)
+            c = xc**2 + yc**2 - rc**2
+            
+            # Solve the quadratic equation
+            discriminant = b**2 - 4 * a * c
+            if discriminant < 0:
+                return (0, 0)  # No real intersection (line does not intersect the circle)            
+            sqrt_discriminant = np.sqrt(discriminant)
+            t1 = (-b + sqrt_discriminant) / (2 * a)
+            t2 = (-b - sqrt_discriminant) / (2 * a)
+            
+            # Calculate intersection points
+            I1 = t1 * D
+            I2 = t2 * D
+            if I1[1] <= 0:
+                return I1
+            else:
+                return I2
+                
+        for amp_i, phase_i, freq_i in zip(amp_data['curves'].items(), phase_data['curves'].items(), freq_data['curves'].items()):
+            amp_data_app = amp_i[1]['data']['approach']['y']
+            phase_data_app = phase_i[1]['data']['approach']['y']
+            # freq_data_app = freq_i[1]['data']['approach']['y']
+            drive_freq = float(freq_i[1]['header']['Resonance frequency [Dynamic settings]'].split(' ')[0]) #cantilever drive freq
+            res_freq = get_calibdict_value('Resonance frequency', 'Hz')['factor']
+            #res_freq = float(freq_i[1]['header']['Resonance frequency [Dynamic settings]'].split(' ')[0]) #cantilever free resonance freq
+            # q_fac = float(freq_i[1]['header']['Quality factor (Q) [Dynamic settings]']) #GET THESE FROM CALIB_DICT from thermal tune!
+            q_fac = get_calibdict_value('Quality factor', '')['factor']
+            k_cant = get_calibdict_value('Spring constant', 'N/m')['factor'] #cantilever spring constant
+            mass_cant = k_cant/(4*(np.pi*res_freq)**2) #cantilever mass
+            #use approach data to find lockin output complex plane circle (amp vs phase)
+            amp_free = np.mean(amp_data_app[:pts_free]) #average first 10 points to get initial "free" amplitude
+            # amptrue_min = np.mean(data_amptrue[:pts_free])
+            # r = np.mean(np.sqrt(amp_data_app[:pts_free]**2 + phase_data_app[:pts_free]**2))/2
+            # r0 = -r
+            # print(amp_free)
+            # fig = plt.figure()
+            # ax = fig.add_subplot(111,aspect='equal')  
+            
+            # phis=np.arange(0,6.28,0.01)
+            # r = abs(amp_free)/2
+            # r0 = amp_free/2
+            center = (EXTRA_CHANNEL_DICT['Frequency shift']['kwargs']['xc'],amp_free/2)
+            r = np.mean(np.sqrt((amp_data_app[:pts_free]-center[1])**2 + (phase_data_app[:pts_free]-center[0])**2))
+            circ_x, circ_y, circ_theta = circle(center=center, radius=r, theta_range=(-np.pi/2, -3*np.pi/2))
+
+            if make_plot == True:
+                plt.axhline(y=0, linewidth=1, alpha=0.7)
+                plt.axvline(x=0, linewidth=1, alpha=0.7)
+                plt.plot(phase_data_app, amp_data_app, 'y.')
+                plt.plot(circ_x, circ_y, 'r--')
+                plt.plot(*center, '*r')
+            
+            freq_shift = {}
+            amp_diss = {}
+            # phase_ang = {}
+            energy_diss = {}
+            for dir_i in amp_i[1]['data'].keys():
+                freq_shift[dir_i] = []
+                amp_diss[dir_i] = []
+                # phase_ang[dir_i] = []
+                amp_data_i = amp_i[1]['data'][dir_i]['y']
+                phase_data_i = phase_i[1]['data'][dir_i]['y']
+                freq_data_i = freq_i[1]['data'][dir_i]['y']
+                # ind_plot = 320 #point to plot to check
+                for data_ind in range(len(amp_data_i)):
+                    data_pt = (phase_data_i[data_ind], amp_data_i[data_ind])
+                    inter_pt = find_intersection(center=center, radius=r, point=data_pt)
+                    # cos_theta = data_pt[1]/np.sqrt(data_pt[0]**2 + data_pt[1]**2)
+                    # print(data_pt, inter_pt, np.arctan2(inter_pt[1]-center[1],inter_pt[0])*180/np.pi)   
+                    ampdiff_pt = amp_free**2 - (data_pt[0]**2 + data_pt[1]**2) # ONLY FOR PLL ON! CHANGE OR REMOVE THIS!! BELOW IS MORE CORRECT
+                    if inter_pt[0] == 0 or data_pt[1] >= 0:
+                        # freq_shift[dir_i].append(0) #UNCOMMMENT THIS
+                        freq_shift[dir_i].append(res_freq-freq_pt)
+                        # amp_diss[dir_i].append(0) #UNCOMMMENT THIS
+                        if ampdiff_pt >= 0: #COMMENT THIS
+                            amp_diss[dir_i].append(np.sqrt(ampdiff_pt))
+                        else:
+                            amp_diss[dir_i].append(-np.sqrt(-ampdiff_pt))
+                        # phase_ang_pt = -90
+                        # phase_ang.append(phase_ang_pt)
+                    else:
+                        #UNCOMMENT THIS
+                        # ampdiff_pt = (inter_pt[0]**2 + inter_pt[1]**2) - (data_pt[0]**2 + data_pt[1]**2) #square difference of amp (energy bal.)
+                        if ampdiff_pt >= 0:
+                            amp_diss[dir_i].append(np.sqrt(ampdiff_pt))
+                        else:
+                            amp_diss[dir_i].append(-np.sqrt(-ampdiff_pt))
+                        phase_pt = inter_pt[1]/inter_pt[0]
+                        # phase_ang_pt = np.arctan2(inter_pt[1],inter_pt[0])*180/np.pi
+                        # phase_ang.append(phase_ang_pt)
+                        inter_ind = np.argmin(abs(circ_y-inter_pt[1]))
+                        freq_pt = freq_data_i[data_ind] #*freq_sens*1000 drive_freq - 
+                        # print(inter_pt[1], circ_y[inter_ind])
+                        freq_shift[dir_i].append(res_freq-freq_pt) #ONLY FOR PLL ON! CHANGE THIS! BELOW IS MORE CORRECT, UNCOMMENT!
+                        # if phase_pt >= 0 : #calculate shift in resonance frequency
+                        #     freq_calc = res_freq - (freq_pt/(2*q_fac*phase_pt))*(np.sqrt(1+(4*(q_fac**2)*(phase_pt**2)))-1)
+                        #     freq_shift[dir_i].append(freq_calc) #attractive freq shift considered positive
+                        # else:
+                        #     freq_calc = res_freq - (freq_pt/(2*q_fac*phase_pt))*(-np.sqrt(1+(4*(q_fac**2)*(phase_pt**2)))-1)
+                        #     freq_shift[dir_i].append(freq_calc) #attractive freq shift considered positive
+                
+                    if data_ind == ind_plot and dir_i == 'approach' and make_plot == True:
+                        inter_pt_plot = inter_pt[0], inter_pt[1]
+                        data_pt_plot = data_pt[0], data_pt[1]
+                        plt.plot([0, inter_pt_plot[0]], [0, inter_pt_plot[1]], 'w:')
+                        plt.plot(*inter_pt_plot, 'wo')
+                        plt.plot(*data_pt_plot, 'wo')                        
+                        plt.gca().minorticks_on()
+                        plt.grid(True, alpha=0.3, which='both')
+                        EXTRA_CHANNEL_DICT['Frequency shift']['plots'][amp_i[0]] = fig2html(plt.gcf(), plot_type='matplotlib',
+                                                                                           width=500, height=500, dpi=300)
+                    plt.clf()
+                    plt.close('all')
+                        # print(phase_ang_pt, ampdiff_pt, amptrue_min - ampdiff_pt)
+                        # print(data_pt, inter_pt)
+                        # if freq_calc < 0:
+                        #     print(data_ind, data_pt, freq_calc, data_x[data_ind])
+                    # print(freq_shift, freq_calc)
+                
+                # print(cali_fact) drive_freq-
+                energy_diss[dir_i] =  mass_cant*(np.pi**2)*np.square(amp_diss[dir_i])*(np.square(freq_data_i)+\
+                                                                                       np.square(res_freq-np.array(freq_shift[dir_i]))) #dissipation energy
+            
+            data_dict['Amplitude dissipated']['curves'][amp_i[0]] = {'data':{'approach':{'x': amp_i[1]['data']['approach']['x'],
+                                                                                         'y': np.array(amp_diss['approach'])
+                                                                                      },
+                                                                           'retract':{'x': amp_i[1]['data']['retract']['x'],
+                                                                                      'y': np.array(amp_diss['retract'])
+                                                                                     }
+                                                                          },
+                                                                     'header':amp_i[1]['header']
+                                                                     }
+            data_dict['Energy dissipated']['curves'][amp_i[0]] = {'data':{'approach':{'x': amp_i[1]['data']['approach']['x'],
+                                                                                      'y': energy_diss['approach']
+                                                                                      },
+                                                                           'retract':{'x': amp_i[1]['data']['retract']['x'],
+                                                                                      'y': energy_diss['retract']
+                                                                                     }
+                                                                          },
+                                                                  'header':amp_i[1]['header']
+                                                                  }
+            data_dict['Frequency shift']['curves'][freq_i[0]] = {'data':{'approach':{'x': freq_i[1]['data']['approach']['x'],
+                                                                                     'y': np.array(freq_shift['approach'])
+                                                                                      },
+                                                                         'retract':{'x': freq_i[1]['data']['retract']['x'],
+                                                                                    'y': np.array(freq_shift['retract'])
+                                                                                    }
+                                                                         },
+                                                                 'header':freq_i[1]['header']
+                                                                 }
+            
+            # amp_true_diss = np.sqrt(np.abs(np.square(amptrue_min)-np.square(data_amptrue)))
+    
         
     # else:
     #     print(f'Normal deflection channel not created due to missing channel: Normal force')

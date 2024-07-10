@@ -197,8 +197,11 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero
 #         fit_data = {'x': force_data[segment]['x'][idx_min:], 'y': poly(force_data[segment]['x'][idx_min:])}
 #         return {'value': -p[0], 'segment': segment, 'x': fit_data['x'], 'y': fit_data['y']}
 
-#fits a 2nd order polynomial on data after minima and returns the slope of tangent at the end point
-def stiffness(force_data, fit_order, snapin_index):
+#for method: 'simple poly', fits a 2nd order polynomial on data after minima and returns the slope of tangent at the end point
+# for method: 'best gradient', gradient of data is filered and fitting range for data is found based on percentile_range of the filtered gradient.
+# the range is the longest chunk of consective data satifying the percentile condition. fit_order can be used to either do a linear fit or parabola fit
+#over this range (tangent returned as slope for the case of parabola again)
+def stiffness(force_data, method, fit_order, snapin_index, filter_size, percentile_range):
     segment = 'approach'
     fit_order=2
     idx_min = snapin_index #np.argmin(force_data[segment]['y'])
@@ -209,11 +212,39 @@ def stiffness(force_data, fit_order, snapin_index):
         data_x, data_y = force_data[segment]['x'][idx_min:], force_data[segment]['y'][idx_min:]
         # print(len(force_data[segment]['x']), len(force_data[segment]['y']))
         # print(idx_min, len(data_x), len(data_y))
-        p, res, rank, sing, rcond = np.polyfit(data_x, data_y, fit_order, full=True) #2nd order fit 
-        poly1 = np.poly1d(p)
-        x0, y0 = data_x[-1], poly1(data_x[-1])
-        p_tan = [2*p[0]*x0+p[1], y0-(p[1]*x0)-(2*p[0]*x0**2)] #tangent slope equation
-        poly2 = np.poly1d(p_tan)
+        if method == 'simple poly':
+            p, res, rank, sing, rcond = np.polyfit(data_x, data_y, 2, full=True) #2nd order fit 
+            poly1 = np.poly1d(p)
+            x0, y0 = data_x[-1], poly1(data_x[-1])
+            p_tan = [2*p[0]*x0+p[1], y0-(p[1]*x0)-(2*p[0]*x0**2)] #tangent slope equation
+            poly2 = np.poly1d(p_tan)
+        elif method == 'best gradient':
+            data_y_grad = np.gradient(data_y, data_x)
+            data_y_gradfilt = ndimage.median_filter(data_y_grad, size=filter_size)#, mode='nearest')
+            median_slope = np.median(data_y_gradfilt)
+            data_y_good = (data_y_gradfilt<=np.percentile(data_y_gradfilt, percentile_range[1])) & (data_y_gradfilt>=np.percentile(data_y_gradfilt, percentile_range[0]))
+            #find largest chunk of consecutive data following above condition
+            ind_good = np.argwhere(data_y_good==True).flatten()
+            ind_chunk = np.argwhere((np.diff(ind_good)-1).astype(bool)==True).flatten()
+            ind_chunk_all = np.insert(ind_chunk+1, 0, 0)
+            ind_chunk_all = np.append(ind_chunk_all, len(ind_good))
+            argmax = np.argmax(np.diff(ind_chunk_all))
+            arg_range = ind_chunk_all[argmax], ind_chunk_all[argmax+1]-1
+            ind_fitrange = slice(ind_good[arg_range[0]], ind_good[arg_range[-1]]+1)
+            
+            # p, res, rank, sing, rcond = np.polyfit(data_x, data_y, fit_order, full=True) #2nd order fit 
+            # print(p)
+            if fit_order == 1:
+                p, res, rank, sing, rcond = np.polyfit(data_x[ind_fitrange], data_y[ind_fitrange], 1, full=True) #linear fit
+                p_tan = p
+                poly2 = np.poly1d(p)
+            elif fit_order == 2: #fit parabola with positive curvature
+                poly2d = lambda x, a, b, c: (a*x**2) + (b*x) + c
+                p, _ = curve_fit(poly2d, data_x[ind_fitrange], data_y[ind_fitrange], bounds=([0, -np.inf, -np.inf], [np.inf, np.inf, np.inf]))    
+                poly1 = np.poly1d(p)
+                x0, y0 = data_x[-1], poly1(data_x[-1])
+                p_tan = [2*p[0]*x0+p[1], y0-(p[1]*x0)-(2*p[0]*x0**2)] #tangent slope equation
+                poly2 = np.poly1d(p_tan)            
         n_data = len(data_x)
         fit_x_all = np.linspace(data_x[0], data_x[-1], n_data*10) #CHECK!!
         fit_y_all = poly2(fit_x_all)

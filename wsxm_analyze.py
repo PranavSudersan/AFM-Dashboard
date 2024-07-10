@@ -44,8 +44,11 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                            'unit': '[Normal force]'
                                            },
                               'Stiffness': {'function': spf.stiffness,
-                                            'kwargs': {'fit_order':2,
-                                                       'snapin_index': None
+                                            'kwargs': {'method': 'best gradient', #'best gradient', 'simple poly'
+                                                       'fit_order':1, #1,2 for "best gradient" method
+                                                       'snapin_index': None, #updated after running spf.snapin above
+                                                       'percentile_range': (0, 50),
+                                                       'filter_size': 30
                                                       },
                                             'plot type': 'line',
                                             'unit': '[Normal force]/[Z]'
@@ -90,7 +93,10 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
              'True Phase': {},
              'Amplitude-sample distance': {},
              'Sample deformation': {},
-             'X-Y components': {}
+             'X-Y components': {},
+             'Amplitude dissipated': {},
+             'Energy dissipated': {},
+             'Frequency shift': {},
             }
 
 # calibration dictionary for each channel. ADD MORE CHANNELS!
@@ -139,7 +145,19 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                              'µm': {'factor':1, 'offset':0, 'nm': 0.001}
                             },
               'Spring constant': {'N/m': {'factor':1, 'offset':0}},
-              'X-Y components': {'V': {'factor':1, 'offset':0}}
+              'Resonance frequency': {'Hz': {'factor':1, 'offset':0}},
+              'Quality factor': {'': {'factor':1, 'offset':0}},
+              'X-Y components': {'V': {'factor':1, 'offset':0}},
+              'Amplitude dissipated': {'V': {'factor':1, 'offset':0},
+                                       'nm': {'factor':1, 'offset':0}
+                                      },
+              'Energy dissipated': {'V2': {'factor':1, 'offset':0},
+                                    'aJ': {'factor':1, 'offset':0} #attoJoules (10^-18)
+                                   },
+              'Frequency shift': {'V': {'factor':1, 'offset':0},
+                                  'Hz': {'factor':1, 'offset':0, 'Hz': 1},
+                                  'kHz': {'factor':1, 'offset':0, 'Hz': 0.001}
+                                  },
              }
 
 #rename spectroscopy line to standard names: approach and retract
@@ -722,12 +740,12 @@ def get_calib(df_on, df_off, ind, k_lever, T, corr_fac, datarange=(0,1)):
     fig_html = fig2html(fig, plot_type='plotly')
     # print(fit_dict)
 
-    Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
+    # Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
     # k_lever = 2 # N/m
     # T = 300 #K
     kb = 1.380649e-23 #J/K
-    V_rms = np.sqrt(fit_dict['area']) #area under PSD is the total power, which is the square of rms value of signal
+    fit_dict['V rms'] = np.sqrt(fit_dict['area']) #area under PSD is the total power, which is the square of rms value of signal
     # corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
-    sens = np.sqrt(corr_fac*kb*T/k_lever)/V_rms/1e-9 #nm/V 
+    sens = np.sqrt(corr_fac*kb*T/k_lever)/fit_dict['V rms']/1e-9 #nm/V 
 
-    return sens, k_lever, Q, V_rms, fig_html
+    return sens, k_lever, fit_dict, fig_html

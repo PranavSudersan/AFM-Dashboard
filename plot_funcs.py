@@ -36,6 +36,7 @@ THEME_DICT={'dark': {'plotly':'plotly_dark',
 def set_theme(theme):
     global THEME
     THEME = theme
+    plt.style.use(THEME_DICT[THEME]['matplotlib'])
 
 # def set_theme(theme):
 #     THEME = 
@@ -80,7 +81,7 @@ def create_discrete_colorscale(n_values, colorlist):
 #must be in "y" column. "x" column must contain the common data to be plotted in x axis. Use pandas.melt to convert to long form.
 #error y is the dictionary mapping the main channel name to the error channel name in data
 def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, line_group=None, symbol=None, color=None, 
-                      line_dash=None, hover_name=None, font_dict=None, errory_dict={}):
+                      line_dash=None, hover_name=None, font_dict=None, errory_dict={}, marker_size=1, line_width=1):
     # color_list = ['magenta', 'yellow', 'lime', 'cyan']
     # color_list = ['OrangeRed','Yellow','LimeGreen','Cyan']
     color_list = THEME_DICT[THEME]['axiscolor']
@@ -134,11 +135,11 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
         if color == None: #follow y axis colors for lines
             trace_i.update_traces(yaxis=f'y{i+1}', line_color=color_list[i],# if color==None else None,
                                   showlegend = False, name='',
-                                  marker=dict(size=1))
+                                  marker=dict(size=marker_size), line_width=line_width)
         else: #plot coloured traces, ignoring multi y axes colors
             trace_i.update_traces(yaxis=f'y{i+1}', #line_color=color_list[i] if color==None else None,
                                   showlegend=True if i == 0 else False,
-                                  marker=dict(size=1))
+                                  marker=dict(size=marker_size), line_width=line_width)
         trace_namelist = []
         for j, trace_data_i in enumerate(trace_i.data):
             trace_data_i.name = trace_data_i.name.split(",")[0] #show only first item as label
@@ -562,7 +563,7 @@ def plotly_3dplot(z_3d, z_colour, x, y, cmap=cm_afmhot, height=700, width=1100, 
         font_dict=dict(family='Arial',size=16)
     font_dict['color']=THEME_DICT[THEME]['fontcolor']
     
-    fig = go.Figure(data=[go.Surface(z=z_3d, surfacecolor=z_colour,
+    fig = go.Figure(data=[go.Surface(z=z_3d, surfacecolor=z_colour,#showscale=False,
                                      x=x, y=y, colorscale=cmap, colorbar_tickfont=font_dict,
                                     cmin=np.percentile(z_colour,1, method='midpoint'),
                                     cmax=np.percentile(z_colour,99, method='midpoint'))])
