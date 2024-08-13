@@ -873,6 +873,46 @@ def merge_plotly_figures(figures, layout):
 
     return combined_image
 
+def merge_figures_vertically(figures):
+    """
+    Merges multiple matplotlib figures into a single vertical image.
+
+    Parameters:
+    - figures: A list of matplotlib figure objects to merge.
+
+    Returns:
+    - A PIL Image object containing the vertically combined figure.
+    """
+    # Capture all figures as images in memory
+    buffers = []
+    for fig in figures:
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format='png', bbox_inches='tight')
+        plt.close(fig)  # Close the figure to free memory
+        buffer.seek(0)
+        buffers.append(buffer)
+
+    # Open all images from BytesIO buffers
+    images = [PIL.Image.open(buffer) for buffer in buffers]
+
+    # Determine the width and height of each image
+    widths, heights = zip(*(img.size for img in images))
+
+    # Calculate the dimensions of the new image
+    total_width = max(widths)
+    total_height = sum(heights)
+
+    # Create a new blank image with the combined dimensions
+    new_image =PIL.Image.new('RGB', (total_width, total_height))
+
+    # Paste each image into the new image
+    y_offset = 0
+    for img in images:
+        new_image.paste(img, (0, y_offset))
+        y_offset += img.height
+
+    return new_image
+    
 def extract_base64_image(html):
     try:
         match = re.search(r'data:image/\w+;base64,([\w+/=]+)', html)
