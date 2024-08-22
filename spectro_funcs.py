@@ -153,7 +153,8 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero
             ind_max = len(data_y)
         ind_min = np.argmin(data_y_sobel[:ind_max]) #point of snapin
         if ind_min == 0:
-            return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'z': [], 'index_surf': 0, 'index_min': 0}
+            return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'z': [], 
+                    'index_surf': 0, 'index_min': 0, 'zero': 0}
         else:
             if back_pts > ind_min:
                 back_pts = ind_min

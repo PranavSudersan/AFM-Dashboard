@@ -248,11 +248,33 @@ def wsxm_readcurves(path):
         
         bin_data = file.read(data_len)
         ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
-        x_data, y_data = np.split(ch_array[::2], 2), np.split(ch_array[1::2], 2)
-        data_dict_curv[curv_ind] = {'header': header_dict_top.copy() | header_dict.copy(), 'data': {}} #merge header dictionaries
-        for i, curv_dir in enumerate(line_order):
-            data_dict_curv[curv_ind]['data'][curv_dir] = {'x': x_data[i].max()-x_data[i], #reverse x data
-                                                          'y': chan_offs+(y_data[i]*chan_fact) #converted to proper units
+        x_data = np.split(ch_array[::2], line_num)
+        y_data = np.split(ch_array[1::2], line_num)
+        # print(curv_ind, y_label)
+        # plt.plot(x_data[0], y_data[0])
+        # plt.plot(x_data[1], y_data[1])
+        # plt.plot(data_mat[:,2], data_mat[:,3])
+        # print(line_num, line_pts, line_pts*line_num)
+        # plt.show()
+        # x_data, y_data = np.split(ch_array[::2], 2), np.split(ch_array[1::2], 2)
+        # data_dict_curv[curv_ind] = {'header': header_dict_top.copy() | header_dict.copy(), 'data': {}} #merge header dictionaries
+        for j in range(int(line_num/len(line_order))):
+            k = len(line_order) * j
+            curv_ind_j = curv_ind + round(j/(line_num/len(line_order)), 2) if line_num > 2 else curv_ind
+            data_dict_curv[curv_ind_j] = {'header': header_dict_top.copy() | header_dict.copy(), 'data': {}} #merge header dictionaries
+            # data_dict[y_label]['curves'][curv_ind_j] = {'header': header_dict.copy(), 'data': {}}
+            # for i, curv_dir in enumerate(line_order):
+            #     print(i,j,k, k+(2*i), k+(2*i+1))
+            #     data_dict[y_label]['curves'][curv_ind_j]['data'][curv_dir] = {'x': data_mat[:,k+(2*i)].max()-data_mat[:,k+(2*i)], #reverse x data
+            #                                                                 'y': chan_offs+(data_mat[:,k+(2*i+1)]*chan_fact) #converted to units
+            #                                                                 }
+            # x_data, y_data = np.split(ch_array[k::2], 2), np.split(ch_array[k+1::2], 2)
+            # x_data = ch_array[k::line_num*2], ch_array[k+2::line_num*2]
+            # y_data = ch_array[k+1::line_num*2], ch_array[k+3::line_num*2]
+            for i, curv_dir in enumerate(line_order):
+                # CHECK THIS WITH WSXM
+                data_dict_curv[curv_ind_j]['data'][curv_dir] = {'x': x_data[k+i].max()-x_data[k+i], #max(x_data[i])-x_data[i], #reverse x data
+                                                              'y': chan_offs+(y_data[k+i]*chan_fact) #chan_offs+(y_data[i]*chan_fact) #converted to proper units
                                                           }
                                                 # 'segment':np.append(line_pts * [line_order[0]],line_pts * [line_order[1]])},
                                                   
@@ -354,18 +376,24 @@ def wsxm_readcur(path):
         # print(ln_array)
         data_list.append(list(map(float,ln_array)))
     data_mat = np.array(data_list) #data matrix   
-    # print(data_mat)
+    # print(data_mat.shape)
     # ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
     # x_data, y_data = np.split(ch_array[::2], 2), np.split(ch_array[1::2], 2)
     if y_label not in data_dict.keys():
         data_dict[y_label] = {'curves':{}, 'image':{}}
-    data_dict[y_label]['curves'][curv_ind] = {'header': header_dict.copy(), 'data': {}}
+    # data_dict[y_label]['curves'][curv_ind] = {'header': header_dict.copy(), 'data': {}}
     if 'Index of this Curve [Control]' in header_dict.keys(): #TODO: make "reverse data" as a function for transformation! Then eliminate if-else
-        for i, curv_dir in enumerate(line_order):
-            data_dict[y_label]['curves'][curv_ind]['data'][curv_dir] = {'x': data_mat[:,2*i].max()-data_mat[:,2*i], #reverse x data
-                                                                        'y': chan_offs+(data_mat[:,2*i+1]*chan_fact) #converted to units
-                                                                        }
-    else: 
+        for j in range(int(line_num/len(line_order))):
+            k = 2*len(line_order) * j
+            curv_ind_j = curv_ind + round(j/(line_num/len(line_order)), 2) if line_num > 2 else curv_ind
+            data_dict[y_label]['curves'][curv_ind_j] = {'header': header_dict.copy(), 'data': {}}
+            for i, curv_dir in enumerate(line_order):
+                print(i,j,k, k+(2*i), k+(2*i+1))
+                data_dict[y_label]['curves'][curv_ind_j]['data'][curv_dir] = {'x': data_mat[:,k+(2*i)].max()-data_mat[:,k+(2*i)], #reverse x data
+                                                                            'y': chan_offs+(data_mat[:,k+(2*i+1)]*chan_fact) #converted to units
+                                                                            }
+    else:
+        data_dict[y_label]['curves'][curv_ind] = {'header': header_dict.copy(), 'data': {}}
         for i, curv_dir in enumerate(line_order):
             data_dict[y_label]['curves'][curv_ind]['data'][curv_dir] = {'x': data_mat[:,2*i], #original x data
                                                                         'y': chan_offs+(data_mat[:,2*i+1]*chan_fact) #converted to units
@@ -882,7 +910,10 @@ def wsxm_calc_extrachans(data_dict, data_type):
             amp_data_app = amp_i[1]['data']['approach']['y']
             phase_data_app = phase_i[1]['data']['approach']['y']
             # freq_data_app = freq_i[1]['data']['approach']['y']
-            drive_freq = float(freq_i[1]['header']['Resonance frequency [Dynamic settings]'].split(' ')[0]) #cantilever drive freq
+            if 'Resonance frequency [Dynamic settings]' in freq_i[1]['header'].keys(): #CHECK! ONLY WORKS FOR *.curves FILE!
+                drive_freq = float(freq_i[1]['header']['Resonance frequency [Dynamic settings]'].split(' ')[0]) #cantilever drive freq
+            else:
+                drive_freq = 0
             res_freq = get_calibdict_value('Resonance frequency', 'Hz')['factor']
             #res_freq = float(freq_i[1]['header']['Resonance frequency [Dynamic settings]'].split(' ')[0]) #cantilever free resonance freq
             # q_fac = float(freq_i[1]['header']['Quality factor (Q) [Dynamic settings]']) #GET THESE FROM CALIB_DICT from thermal tune!
