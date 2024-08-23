@@ -961,9 +961,11 @@ def wsxm_calc_extrachans(data_dict, data_type):
                     # cos_theta = data_pt[1]/np.sqrt(data_pt[0]**2 + data_pt[1]**2)
                     # print(data_pt, inter_pt, np.arctan2(inter_pt[1]-center[1],inter_pt[0])*180/np.pi)   
                     ampdiff_pt = amp_free**2 - (data_pt[0]**2 + data_pt[1]**2) # ONLY FOR PLL ON! CHANGE OR REMOVE THIS!! BELOW IS MORE CORRECT
+                    freq_pt = freq_data_i[data_ind] #CHECK!
                     if inter_pt[0] == 0 or data_pt[1] >= 0:
                         # freq_shift[dir_i].append(0) #UNCOMMMENT THIS
-                        freq_shift[dir_i].append(res_freq-freq_pt)
+                        freq_shift[dir_i].append(drive_freq-freq_pt) #CHECK THIS!!
+                        # freq_shift[dir_i].append(res_freq-freq_pt)
                         # amp_diss[dir_i].append(0) #UNCOMMMENT THIS
                         if ampdiff_pt >= 0: #COMMENT THIS
                             amp_diss[dir_i].append(np.sqrt(ampdiff_pt))
@@ -982,9 +984,10 @@ def wsxm_calc_extrachans(data_dict, data_type):
                         # phase_ang_pt = np.arctan2(inter_pt[1],inter_pt[0])*180/np.pi
                         # phase_ang.append(phase_ang_pt)
                         inter_ind = np.argmin(abs(circ_y-inter_pt[1]))
-                        freq_pt = freq_data_i[data_ind] #*freq_sens*1000 drive_freq - 
+                        # freq_pt = freq_data_i[data_ind] #*freq_sens*1000 drive_freq - 
                         # print(inter_pt[1], circ_y[inter_ind])
-                        freq_shift[dir_i].append(res_freq-freq_pt) #ONLY FOR PLL ON! CHANGE THIS! BELOW IS MORE CORRECT, UNCOMMENT!
+                        freq_shift[dir_i].append(drive_freq-freq_pt) #CHECK THIS!!
+                        # freq_shift[dir_i].append(res_freq-freq_pt) #ONLY FOR PLL ON! CHANGE THIS! BELOW IS MORE CORRECT, UNCOMMENT!
                         # if phase_pt >= 0 : #calculate shift in resonance frequency
                         #     freq_calc = res_freq - (freq_pt/(2*q_fac*phase_pt))*(np.sqrt(1+(4*(q_fac**2)*(phase_pt**2)))-1)
                         #     freq_shift[dir_i].append(freq_calc) #attractive freq shift considered positive
