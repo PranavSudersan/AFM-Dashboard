@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from scipy.optimize import curve_fit
 from scipy import signal
+from scipy.optimize import curve_fit
+from scipy.special import kv
 # import scipy.ndimage as ndimage
 # from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
@@ -687,7 +688,7 @@ def get_psd_calib(amp_data, phase_data):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-def get_calib(df_on, df_off, ind, k_lever, T, corr_fac, datarange=(0,1)):
+def get_calib(df_on, df_off, ind, T, corr_fac, cant_width, cant_length, datarange=(0,1)):
     freq_final = df_on['frequency'].iloc[ind]
     psd_final = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
     #only take a small window of data (if psd is bad)
@@ -742,6 +743,8 @@ def get_calib(df_on, df_off, ind, k_lever, T, corr_fac, datarange=(0,1)):
     fig_html = fig2html(fig, plot_type='plotly')
     # print(fit_dict)
 
+    k_lever = kcant_sader_normal(width=cant_width, length=cant_length, Q_factor=fit_dict['Q factor'], 
+                                 freq_res=fit_dict['resonance freq'])
     # Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
     # k_lever = 2 # N/m
     # T = 300 #K
@@ -751,3 +754,57 @@ def get_calib(df_on, df_off, ind, k_lever, T, corr_fac, datarange=(0,1)):
     sens = np.sqrt(corr_fac*kb*T/k_lever)/fit_dict['V rms']/1e-9 #nm/V 
 
     return sens, k_lever, fit_dict, fig_html
+
+# Sader method for normal spring constant calibration of rectangular cantilevers
+# width and length (of cantilever) in μm, freq_res (resonance frequency) in Hz
+# dens (fluid density) in kg/m3, visc (fluid viscosity) in kg/m/s
+# reference: https://github.com/GrandlLab/sader_calibration
+def kcant_sader_normal(width, length, Q_factor, freq_res, dens = 1.18, visc = 1.86e-5):
+    p = dens #fluid density (kg/m3)
+    n = visc #fluid viscosity (kg/m/s)
+
+    def Reynolds_num(f0,width): 
+        result = (p * f0 * width**2) / (4 * n)
+        return result
+    
+    def hydrodynamic_circ(f0,width,Re):
+        # result = 1 + (4 * 1j * besselk(1, -1j*np.sqrt(1j*Re)))/\
+        # (np.sqrt(1j*Re) * besselk(0, -1j*np.sqrt(1j*Re)))
+        result = 1 + (4 * 1j * kv(1, -1j*np.sqrt(1j*Re)))/\
+        (np.sqrt(1j*Re) * kv(0, -1j*np.sqrt(1j*Re)))
+    
+        return result
+
+    def G_real(z):
+        result = (0.91324 - 0.48274*z + 0.46842*z**2 - 0.12886*z**3\
+                  + 0.044055*z**4 - 0.0035117*z**5 + 0.00069085*z**6) /\
+                  (1 - 0.56964*z + 0.48690*z**2 - 0.13444*z**3\
+                   + 0.045155*z**4 - 0.0035862*z**5 + 0.00069085*z**6)
+        return result
+
+    def G_imag(z):
+        result = (-0.024134 - 0.029256*z + 0.016294*z**2 - 0.00010961*z**3\
+                  + 0.000064577*z**4 - 0.00004451*z**5)/\
+                  (1 - 0.59702*z + 0.55182*z**2 - 0.18357*z**3\
+                   + 0.079156*z**4 - 0.014369*z**5 + 0.0028361*z**6)
+        return result
+    
+    def hydrodynamic_corr(Re):
+        logRe = np.log10(Re)
+        result = G_real(logRe) + 1j*G_imag(logRe)
+        return result
+
+    def hydrodynamic_rect(f0,width):
+        Re = Reynolds_num(f0,width)
+        result = hydrodynamic_corr(Re) * hydrodynamic_circ(f0,width,Re)
+    
+        return result
+
+    w = width * 1e-6
+    l = length * 1e-6
+    f0 = 2*np.pi*freq_res
+    Q = Q_factor
+    k_norm = 0.1906 * f0**2 * p * w**2 * l * np.imag(hydrodynamic_rect(f0,w)) * Q
+    
+    return k_norm
+ 
