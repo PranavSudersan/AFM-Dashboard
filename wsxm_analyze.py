@@ -683,7 +683,9 @@ def get_psd_calib(amp_data, phase_data):
     # plt.show()
 
     z = zz_amp_full.flatten()
-    z_rms = np.sqrt(2)*np.sqrt(np.mean(np.square(z))) #rms of true amplitude assuming both "amp' and 'phase" channels are half of power each
+    # z_rms = np.sqrt(2)*np.sqrt(np.mean(np.square(z))) #rms of true amplitude assuming both "amp' and 'phase" channels are half of power each
+    #true amplitude calculated from amp and phase channels
+    z_rms = np.sqrt(np.mean(np.square(zz_amp_full.flatten()) + np.square(zz_phase_full.flatten())))
     # print(zz.min(), zz.max(), z_rms)
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
