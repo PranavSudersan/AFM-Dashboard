@@ -11,6 +11,7 @@ import re
 
 import spectro_funcs as spf
 import fit_funcs as ftf 
+import transform_funcs as tsf
 from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, fig2html
 
 #TODO: calibration dictionary to get in nm or nN from volts
@@ -646,8 +647,11 @@ def get_psd_calib(amp_data, phase_data):
     zz_phase_list = []
     for img_dir in amp_data.keys():
         head_data = amp_data[img_dir]['header']
-        zz_amp = amp_data[img_dir]['data']['Z']
-        zz_phase = phase_data[img_dir]['data']['Z']
+        # z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
+        # zz_amp = amp_data[img_dir]['data']['Z']
+        # zz_phase = phase_data[img_dir]['data']['Z']
+        zz_amp = tsf.flatten_line(amp_data[img_dir]['data'], order=1, pos_shift=False)
+        zz_phase = tsf.flatten_line(phase_data[img_dir]['data'], order=1, pos_shift=False)
         # xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
 
         # xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
@@ -690,25 +694,28 @@ def get_psd_calib(amp_data, phase_data):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-def get_calib(df_on, df_off, ind, T, corr_fac, cant_width, cant_length, datarange=(0,1)):
-    freq_final = df_on['frequency'].iloc[ind]
-    psd_final = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
+def get_calib(df_on, df_off, ind, T, cant_width, cant_length, datarange=(0,1)):
+    freq_raw = df_on['frequency'].iloc[ind]
+    psd_raw = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
     #only take a small window of data (if psd is bad)
-    ind0, ind1 = int(datarange[0]*len(psd_final)), int(datarange[1]*len(psd_final))
-    psd_final = psd_final[ind0:ind1]
-    freq_final = freq_final[ind0:ind1]
+    ind0, ind1 = int(datarange[0]*len(psd_raw)), int(datarange[1]*len(psd_raw))
+    psd_final = psd_raw[ind0:ind1]
+    freq_final = freq_raw[ind0:ind1]
     # plt.plot(freq_final, psd_final, 'r')
     # plt.plot(freq_final, df_on['psd'].iloc[ind], 'y', alpha=0.5)
     # plt.plot(freq_final, df_off['psd'].iloc[ind], 'y', alpha=0.5)
     #plt.show()
-    psd_data = pd.DataFrame({'Frequency': freq_final, 
-                             'final': psd_final, 
-                             'laser on': df_on['psd'].iloc[ind][ind0:ind1],
-                             'laser off': df_off['psd'].iloc[ind][ind0:ind1]
+    # calib_data_dict['zrms']
+    
+    psd_data = pd.DataFrame({'Frequency': freq_raw, 
+                             'final': psd_raw, 
+                             'laser on': df_on['psd'].iloc[ind],#[ind0:ind1],
+                             'laser off': df_off['psd'].iloc[ind],#[ind0:ind1]
                             })
     psd_df_long = pd.melt(psd_data, id_vars=['Frequency'], value_vars=['laser on', 'laser off', 'final'],
                          var_name='name', value_name='PSD')
     
+    zrms_i = (df_on['zrms'].iloc[ind]**2 - df_off['zrms'].iloc[ind]**2)**0.5 #CHECK THIS!
     
     #guess = [0, 76000, 2000, 100000]
     y_guess = 0 #psd_final.min()
@@ -719,15 +726,15 @@ def get_calib(df_on, df_off, ind, T, corr_fac, cant_width, cant_length, datarang
     # print(guess)
     #fit
     popt, pcov = curve_fit(ftf.lorentzian, freq_final,psd_final,
-                        p0=guess, bounds=(0,np.inf))
+                        p0=guess, bounds=(0,np.inf), method='trf', ftol=1e-14, xtol=1e-14, gtol=1e-14)
     #print(np.linalg.cond(pcov))
     params = ['offset','resonance freq', 'fwhm', 'area']
     fit_dict = dict(zip(params, popt))
     fit_dict['Q factor'] = fit_dict['resonance freq']/fit_dict['fwhm']
     
     #plot fit
-    f_min, f_max = freq_final.min(), freq_final.max()
-    f_ext = 0.1*(f_max-f_min)
+    f_min, f_max = freq_raw.min(), freq_raw.max()
+    f_ext = 0.0*(f_max-f_min)
     fit_n = 8000
     freq_fit_range = np.linspace(f_min-f_ext, f_max+f_ext, fit_n)
     # plt.plot(freq_fit_range,ftf.lorentzian(freq_fit_range, *popt), 'k--')
@@ -752,9 +759,10 @@ def get_calib(df_on, df_off, ind, T, corr_fac, cant_width, cant_length, datarang
     # T = 300 #K
     kb = 1.380649e-23 #J/K
     fit_dict['V rms'] = np.sqrt(fit_dict['area']) #area under PSD is the total power, which is the square of rms value of signal
+    fit_dict['zrms'] = zrms_i #true rms amplitude
     # corr_fac = 4/3 #Butt-Jaschke correction for thermal noise
-    sens = np.sqrt(corr_fac*kb*T/k_lever)/fit_dict['V rms']/1e-9 #nm/V 
-
+    sens = np.sqrt(kb*T/k_lever)/fit_dict['V rms']/1e-9 #nm/V 
+    # print(fit_dict)
     return sens, k_lever, fit_dict, fig_html
 
 # Sader method for normal spring constant calibration of rectangular cantilevers
