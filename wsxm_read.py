@@ -37,8 +37,8 @@ def get_extrachan_dict(channel):
 
 def wsxm_get_common_files(filepath, ext=None):
     # filepath = 'data/interdigThiols_tipSi3nN_b_0026.fb.ch1.gsi'
-    path_dir = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
+    path_dir = filepath.parent #os.path.dirname(filepath)
+    filename = filepath.name #os.path.basename(filepath)
     # filename_com = os.path.basename(filepath).split('.')[0] #common file name
     match = re.search(r'\_\d{4}', filename) #regex to find 4 digit number in filename
     if match == None: #return same file for no matches #CHECK
@@ -47,13 +47,16 @@ def wsxm_get_common_files(filepath, ext=None):
         filename_com = filename[:match.start()+5]
     # print(filename_com)
     files = []
-    for i in os.listdir(path_dir):
-        path_i = os.path.join(path_dir,i)
+    # for i in os.listdir(path_dir):
+    for path_i in path_dir.iterdir():
+        # path_i = os.path.join(path_dir,i)
         path_ext_i = os.path.splitext(path_i)[1] #file extension
         if ext != None and path_ext_i != ext: #if ext given, skip files dont match the extension
             continue
-        if os.path.isfile(path_i) and i.startswith(filename_com):
-            files.append(path_i)    
+        # if os.path.isfile(path_i) and i.startswith(filename_com):
+        if os.path.isfile(path_i) and path_i.name.startswith(filename_com):
+            files.append(path_i) 
+    # print(files)
     files.remove(filepath) #make sure filepath is the first item in the list
     files.insert(0, filepath)
     return files
@@ -1191,16 +1194,20 @@ def wsxm_calc_extrachans(data_dict, data_type):
 def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=True):
     # folderpath = 'data/'
     # folderpath = filedialog.askdirectory() #use folder picker dialogbox
-    picklepath = f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl" #pickled binary file
+    # picklepath = f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl" #pickled binary file
+    # print(folderpath)
+    picklepath = folderpath / f"filelist_{folderpath.name}.pkl" #pickled binary file
     if os.path.exists(picklepath) and refresh==False:
         file_df = pd.read_pickle(picklepath) #choose "datalist.pkl" file (faster)
     else:
         file_dict = {'plot': [], 'file':[], 'name': [], 'channel': [], 'type': [], #'feedback': [], #'mode': [], 
                      'size':[], 'resolution':[], 'max':[], 'min':[], 'avg':[], 'time':[], 
                      'extension':[], 'header': [], 'header names':[]}
-        for fnum_i, filename_i in enumerate(os.listdir(folderpath)):
+        # for fnum_i, filename_i in enumerate(os.listdir(folderpath)):
+        for fnum_i, path_i in enumerate(folderpath.iterdir()):
+            filename_i = path_i.name
             print(fnum_i, filename_i)
-            path_i = os.path.join(folderpath,filename_i)
+            # path_i = os.path.join(folderpath,filename_i)
             if os.path.isfile(path_i):
                 match_i = re.search(r'\_\d{4}', filename_i) #regex to find 4 digit number in filename
                 time_i = datetime.datetime.fromtimestamp(os.path.getmtime(path_i)) #time of file modified (from file metadata)
@@ -1364,12 +1371,16 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
         file_df.sort_values(by=['time'], inplace=True, ignore_index=True)
         if make_plot == True:
             #save excel file for manual check including images
+            # imagedf_to_excel(file_df.drop(columns=['header', 'header names']), 
+            #                  f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx", img_size=(100, 100))
             imagedf_to_excel(file_df.drop(columns=['header', 'header names']), 
-                             f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx", img_size=(100, 100))
+                             folderpath / f"filelist_{folderpath.name}.xlsx", img_size=(100, 100))
         else:
-            file_df.to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
+            # file_df.to_excel(f"{folderpath}/filelist_{os.path.basename(folderpath)}.xlsx")
+            file_df.to_excel(folderpath / f"filelist_{folderpath.name}.xlsx")
         file_df.drop(columns=['header data'], inplace=True) #remove "stringed" header data
         #save "pickled" binary data of file list for later use   
-        file_df.to_pickle(f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl")
+        # file_df.to_pickle(f"{folderpath}/filelist_{os.path.basename(folderpath)}.pkl")
+        file_df.to_pickle(folderpath / f"filelist_{folderpath.name}.pkl")
     
     return file_df

@@ -52,9 +52,11 @@ def SaderGCI_GetLeverList( UserName, Password ):
     
     cantilever_ids = doc.findall('./cantilevers/cantilever/id')
     cantilever_labels = doc.findall('./cantilevers/cantilever/label')
-
+    cantilever_dict = {}
     for a in range(len(cantilever_ids)):
-        print (cantilever_labels[a].text,cantilever_ids[a].text.replace('data_','(')+')')
+        # print (cantilever_labels[a].text,cantilever_ids[a].text.replace('data_','(')+')')
+        cantilever_dict[cantilever_labels[a].text] = cantilever_ids[a].text
+    return cantilever_dict
 
         
 def SaderGCI_CalculateK( UserName, Password, LeverNumber, Frequency, QFactor ):
@@ -64,17 +66,23 @@ def SaderGCI_CalculateK( UserName, Password, LeverNumber, Frequency, QFactor ):
         <password>'''+Password+'''</password>
         <operation>UPLOAD</operation>
         <cantilever>
-            <id>data_'''+str(LeverNumber)+'''</id>
+            <id>'''+str(LeverNumber)+'''</id>
             <frequency>'''+str(Frequency)+'''</frequency>
             <quality>'''+str(QFactor)+'''</quality>
         </cantilever>
     </saderrequest>'''
     headers = {'user-agent': Version, 'Content-type': Type}
     r = requests.post(url, data=payload, headers=headers)
-    print (r.text)
+    # print (r.text)
     doc = etree.fromstring(r.content)
     if (doc.find('./status/code').text == 'OK'):
-        print ("Sader GCI Spring Constant = "+doc.find('./cantilever/k_sader').text+', 95% C.I. Error = '+doc.find('./cantilever/percent').text+'% from '+doc.find('./cantilever/samples').text+' samples.')
+        # print ("Sader GCI Spring Constant = "+doc.find('./cantilever/k_sader').text+', 95% C.I. Error = '+doc.find('./cantilever/percent').text+'% from '+doc.find('./cantilever/samples').text+' samples.')
+        return {'k_sader': float(doc.find('./cantilever/k_sader').text),
+                'error': float(doc.find('./cantilever/percent').text), #95% C.I. Error
+                'samples': int(doc.find('./cantilever/samples').text) #number of samples
+               }
+    else:
+        print('ERROR! Cantilever not found in GCI database')
 
         
 def SaderGCI_CalculateAndUploadK( UserName, Password, LeverNumber, Frequency, QFactor, SpringK ):

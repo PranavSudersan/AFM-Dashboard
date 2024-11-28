@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import copy
 import re
 
+from Sader_GCI_demo import SaderGCI_CalculateK
 import spectro_funcs as spf
 import fit_funcs as ftf 
 import transform_funcs as tsf
@@ -645,21 +646,24 @@ def combine_forcevol_data(data, channel_list, label_data=[], unit_dict=None):
 def get_psd_calib(amp_data, phase_data):
     zz_amp_list = []
     zz_phase_list = []
-    for img_dir in amp_data.keys():
-        head_data = amp_data[img_dir]['header']
-        # z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
-        # zz_amp = amp_data[img_dir]['data']['Z']
-        # zz_phase = phase_data[img_dir]['data']['Z']
-        zz_amp = tsf.flatten_line(amp_data[img_dir]['data'], order=1, pos_shift=False)
-        zz_phase = tsf.flatten_line(phase_data[img_dir]['data'], order=1, pos_shift=False)
-        # xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
-
-        # xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
-
-        #true amplitude calculated from amp and phase channels
-        # zz_i = np.sqrt(np.square(zz_amp) + np.square(zz_phase))
-        zz_amp_list.append(zz_amp)
-        zz_phase_list.append(zz_amp)
+    for img_dir in ['Forward', 'Backward']:#amp_data.keys():
+        if img_dir in amp_data.keys():
+            head_data = amp_data[img_dir]['header']
+            # z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1)
+            # zz_amp = amp_data[img_dir]['data']['Z']
+            # zz_phase = phase_data[img_dir]['data']['Z']
+            zz_amp = tsf.flatten_line(amp_data[img_dir]['data'], order=1, pos_shift=False)
+            zz_phase = tsf.flatten_line(phase_data[img_dir]['data'], order=1, pos_shift=False)
+            # xx, yy, zz_amp = get_imgdata(amp_data[img_dir])
+    
+            # xx, yy, zz_phase= get_imgdata(phase_data[img_dir])
+            if img_dir == 'Forward':
+                zz_amp = np.flip(zz_amp, axis=1)
+                zz_phase = np.flip(zz_phase, axis=1)
+            #true amplitude calculated from amp and phase channels
+            # zz_i = np.sqrt(np.square(zz_amp) + np.square(zz_phase))
+            zz_amp_list.append(zz_amp)
+            zz_phase_list.append(zz_phase)
     
     zz_amp_full = np.concatenate(zz_amp_list, axis=1)
     zz_phase_full = np.concatenate(zz_phase_list, axis=1)
@@ -694,7 +698,7 @@ def get_psd_calib(amp_data, phase_data):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-def get_calib(df_on, df_off, ind, T, cant_width, cant_length, datarange=(0,1)):
+def get_calib(df_on, df_off, ind, T, lever_number, userid, password, datarange=(0,1)):
     freq_raw = df_on['frequency'].iloc[ind]
     psd_raw = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
     #only take a small window of data (if psd is bad)
@@ -752,8 +756,11 @@ def get_calib(df_on, df_off, ind, T, cant_width, cant_length, datarange=(0,1)):
     fig_html = fig2html(fig, plot_type='plotly')
     # print(fit_dict)
 
-    k_lever = kcant_sader_normal(width=cant_width, length=cant_length, Q_factor=fit_dict['Q factor'], 
-                                 freq_res=fit_dict['resonance freq'])
+    # k_lever = kcant_sader_normal(width=cant_width, length=cant_length, Q_factor=fit_dict['Q factor'], 
+    #                              freq_res=fit_dict['resonance freq'])
+    sader_gci_output = kcant_sader_gci(lever_number=lever_number, Q_factor=fit_dict['Q factor'],
+                                       freq_res=fit_dict['resonance freq'], userid=userid, password=password)
+    k_lever = sader_gci_output['k_sader']
     # Q = fit_dict['Q factor'] #head_data['Quality factor (Q)']
     # k_lever = 2 # N/m
     # T = 300 #K
@@ -764,6 +771,13 @@ def get_calib(df_on, df_off, ind, T, cant_width, cant_length, datarange=(0,1)):
     sens = np.sqrt(kb*T/k_lever)/fit_dict['V rms']/1e-9 #nm/V 
     # print(fit_dict)
     return sens, k_lever, fit_dict, fig_html
+
+# Sader method using the Global Calibration Initiative API
+def kcant_sader_gci(lever_number, Q_factor, freq_res, userid, password):
+    sader_gci_output = SaderGCI_CalculateK(userid, password, lever_number,
+                                           freq_res/1000, #in kHz
+                                           Q_factor)
+    return sader_gci_output
 
 # Sader method for normal spring constant calibration of rectangular cantilevers
 # width and length (of cantilever) in μm, freq_res (resonance frequency) in Hz
