@@ -190,7 +190,7 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
 # delete and recreate secondary y axes based on a given yvars and initialise the plot. yax_dict is a dictionary of previously made
 # secondary y axis in the plot, which is compare to create new y axes or recreate everything.
 def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=None, height=500, width=1100, 
-                             margin=dict(t=50, b=0, l=0, r=0), ypos=0):
+                             margin=dict(t=50, b=50, l=0, r=0), ypos=0):
     if fig == None:
         fig = go.FigureWidget()
         fig.update_layout(font=font_dict,  # font formatting

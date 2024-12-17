@@ -17,7 +17,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
          method = 'simple'
     
     if method == 'simple':
-        f_zero = force_data['approach']['y'][:zero_pts].mean() #CHECK THIS
+        f_zero = np.median(force_data['approach']['y'][:zero_pts]) #CHECK THIS
         fadh_ymin = data_y[ind_min]
         adhesion = f_zero - fadh_ymin
         fit_x = np.array([data_x[0], data_x[ind_min], data_x[ind_min]])
@@ -46,7 +46,7 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
         fit_x = np.append(zero_x, [fadh_x, fadh_x])
         fit_y = np.append(zero_y, [fadh_y0, fadh_ymin])
 
-        f_zero = data_y[:zero_pts].mean() #CHECK THIS
+        f_zero = np.median(data_y[:zero_pts]) #CHECK THIS
         # f_zero = zero_y.mean()
         # f_min = data_y[ind_min]
         if 'd' in force_data[segment].keys():
@@ -84,7 +84,7 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero
     # min_percentile = 1
     # fit_order = 2
     segment = 'approach'
-    data_x, data_y = defl_data[segment]['x'], defl_data[segment]['y']
+    data_x, data_y = defl_data[segment]['x'][1:], defl_data[segment]['y'][1:] #discard first point
     # test2_x, test2_y = test2['Z'], test2['ZZ'][:,y_ind,x_ind]
     # test_y_filt = ndimage.median_filter(test_y, size=filter_size) #filter
     # test_y_filt_sobel = ndimage.sobel(test_y_filt) #sobel transform
@@ -164,6 +164,8 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero
                 zero_y =  np.mean(data_y[ind_min:ind_min-back_pts:-1]) #mean of back_pts before index of high gradient
             elif zero == 'median':
                 zero_y =  np.median(data_y[ind_min:ind_min-back_pts:-1]) #median of back_pts before index of high gradient
+            elif zero == 'ini':
+                zero_y = np.median(data_y[:back_pts]) #median of inital "back_pts" number of points of data_y, ignores normal deflection drift here unlike others
             snap_indmin = np.argmin(data_y[ind_min:ind_max])+ind_min #point of tip-sample contact
             snapin_distance = (zero_y - data_y[snap_indmin]) + (data_x[ind_min-1] - data_x[snap_indmin])
             #surface found by finding x which is snapin_distance length to the left of point of snapin (ind_min-1)
@@ -208,7 +210,7 @@ def stiffness(force_data, method, fit_order, snapin_index, filter_size, percenti
     idx_min = snapin_index #np.argmin(force_data[segment]['y'])
     # try:
     if len(force_data[segment]['x'][idx_min:]) <= fit_order+1:
-        return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd': []}
+        return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd': [], 'x_surf': 0}
     else:          
         data_x, data_y = force_data[segment]['x'][idx_min:], force_data[segment]['y'][idx_min:]
         # print(len(force_data[segment]['x']), len(force_data[segment]['y']))
@@ -219,6 +221,7 @@ def stiffness(force_data, method, fit_order, snapin_index, filter_size, percenti
             x0, y0 = data_x[-1], poly1(data_x[-1])
             p_tan = [2*p[0]*x0+p[1], y0-(p[1]*x0)-(2*p[0]*x0**2)] #tangent slope equation
             poly2 = np.poly1d(p_tan)
+            stiff_ind = slice(idx_min, len(data_x))
         elif method == 'best gradient':
             data_y_grad = np.gradient(data_y, data_x)
             data_y_gradfilt = ndimage.median_filter(data_y_grad, size=filter_size)#, mode='nearest')
@@ -232,7 +235,7 @@ def stiffness(force_data, method, fit_order, snapin_index, filter_size, percenti
             argmax = np.argmax(np.diff(ind_chunk_all))
             arg_range = ind_chunk_all[argmax], ind_chunk_all[argmax+1]-1
             ind_fitrange = slice(ind_good[arg_range[0]], ind_good[arg_range[-1]]+1)
-            
+            stiff_ind = slice(idx_min+ind_good[arg_range[0]], idx_min+ind_good[arg_range[-1]]+1)
             # p, res, rank, sing, rcond = np.polyfit(data_x, data_y, fit_order, full=True) #2nd order fit 
             # print(p)
             if fit_order == 1:
@@ -253,6 +256,10 @@ def stiffness(force_data, method, fit_order, snapin_index, filter_size, percenti
         fitind_max = np.argmin(abs(fit_y_all-data_y.max()))
         fit_x = fit_x_all[fitind_min:fitind_max]
         fit_y = fit_y_all[fitind_min:fitind_max]
+        
+        zero_y = np.median(force_data[segment]['y'][:10]) #zero force CHECK does not consider drift
+        surf_x =  (poly2-zero_y).r[0] #surface x value, found by intersection of stiffness fit with zero force
+        # print(fit_x, fit_y)
         if 'd' in force_data[segment].keys():
             data_d = force_data[segment]['d'][idx_min:]
             fit_d_all = np.linspace(data_d[0], data_d[-1], n_data*10)
@@ -260,9 +267,9 @@ def stiffness(force_data, method, fit_order, snapin_index, filter_size, percenti
             data_z = force_data[segment]['z'][idx_min:]
             fit_z_all = np.linspace(data_z[0], data_z[-1], n_data*10)
             fit_z = fit_z_all[fitind_min:fitind_max]
-            return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'd': fit_d, 'z': fit_z, 'y': fit_y}
+            return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'd': fit_d, 'z': fit_z, 'y': fit_y, 'fit_index': stiff_ind, 'x_surf': surf_x}
         else:
-            return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'y': fit_y}
+            return {'value': -p_tan[0], 'segment': segment, 'x': fit_x, 'y': fit_y, 'fit_index': stiff_ind, 'x_surf': surf_x}
     # except Exception as e:
     #     return {'value': 0, 'segment': segment, 'x': [], 'y': []}
 
@@ -307,7 +314,7 @@ def ampslope(amp_data, filter_size, method, max_percentile, change, num_pts, cha
     segment = 'approach'
     if segment not in amp_data.keys():
         return {'value': 0, 'segment': '', 'x': [], 'd': [], 'z': [], 'y': []}
-    amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
+    amp_data_x, amp_data_y = amp_data[segment]['x'][1:], amp_data[segment]['y'][1:]
     n_data = len(amp_data_x)
     amp_data_y_filt = ndimage.median_filter(amp_data_y, size=filter_size) #filter
     if method == 'minmax':
@@ -411,7 +418,7 @@ def ampgrowth(amp_data, change):
     segment = 'approach'
     if segment not in amp_data.keys():
         return {'value': 0, 'segment': '', 'x': [], 'd': [], 'z': [], 'y': []}
-    amp_data_x, amp_data_y = amp_data[segment]['x'], amp_data[segment]['y']
+    amp_data_x, amp_data_y = amp_data[segment]['x'][1:], amp_data[segment]['y'][1:]
     amp_min, amp_max = amp_data_y.min(), amp_data_y.max()
     center_ind = np.argmin(abs(amp_data_y-((amp_min+amp_max)/2)))
     try:

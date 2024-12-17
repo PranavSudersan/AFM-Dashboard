@@ -31,7 +31,7 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                                    'fit_order': 2,
                                                                    'back_pts': 10,
                                                                    'findmax': True,
-                                                                   'zero': 'max' #'max', 'mean', 'median'
+                                                                   'zero': 'max' #'max', 'mean', 'median', 'ini'
                                                                   },
                                                         'plot type': 'line',
                                                         'unit': '[Normal deflection]'
@@ -278,10 +278,11 @@ def wsxm_getspectro(data, channel, img_dir, x=0, y=0, unit_dict=None, calc_d=Fal
 #unit transformation might be done twice, make sure to pass unit_dict=None if unit operation already done earlier (eg. in wsxm_getspectro)
 #pass Normal deflection as defl_data (without calibration) to calculate tip sample distance "d"
 def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=True, properties=[], defl_data=None):
+    global CALIB_DICT
     #perform calculations for parameters (e.g. adhesion, stiffness, check FUNC_DICT) on the single spectroscopy curve
     # spectro_data = data[channel]['curves'][curv_num]['data']
     spectro_data_cali = copy.deepcopy(spectro_data)
-    
+
     if unit_dict != None: #return spectro data without calibration
         for key in spectro_data_cali.keys(): #calibrate
             spectro_data_cali[key]['y'] = (CALIB_DICT[channel][unit_dict[channel]]['factor']*spectro_data_cali[key]['y']) + \
@@ -315,17 +316,23 @@ def wsxm_calcspectroparam(spectro_data, channel, unit_dict=None, calc_params=Tru
 #additionally, also calculated 'amplitude_sample distance" and "sample deformation" data using tip-sample distance data
 def calc_tipsampledistance(spectro_data, defl_data, channel):
     for key in spectro_data.keys():
-        xini_ind = np.argmax(spectro_data[key]['x']) #position furthest from sample
+        # xini_ind = np.argmax(spectro_data[key]['x']) #position furthest from sample
         kwargs = FUNC_DICT['Normal deflection']['Snap-in distance']['kwargs']
         # print(kwargs)
         snapin_output = spf.snapin(defl_data, **kwargs)
-        spectro_data[key]['d'] = spectro_data[key]['x'] + defl_data[key]['y']-snapin_output['zero'] #tip sample distance
-        
+        kwargs = FUNC_DICT['Normal force']['Stiffness']['kwargs']
+        # print(kwargs)
+        stiffness_output = spf.stiffness(defl_data, **kwargs)
+        # spectro_data[key]['d'] = spectro_data[key]['x'] + defl_data[key]['y']-snapin_output['zero'] #tip sample distance
+        spectro_data[key]['d'] = spectro_data[key]['x'] + defl_data[key]['y']
+        spectro_data[key]['d'] = spectro_data[key]['d'] - np.average(spectro_data[key]['d'][stiffness_output['fit_index']]) #tip sample distance
+        # print(np.average(spectro_data[key]['d'][stiffness_output['fit_index']]), stiffness_output['fit_index'], key)
         if 'index_min' in snapin_output.keys(): #shift x data such that point of snap-in is taken as zero tip sample distance
             # print('d', spectro_data[key]['d'][snapin_output['index']], defl_data[key]['y'][xini_ind], xini_ind, snapin_output['index'],
             #      spectro_data[key]['x'][snapin_output['index']])
-            spectro_data[key]['d'] =  spectro_data[key]['d'] - spectro_data[key]['d'][snapin_output['index_min']]
-            spectro_data[key]['z'] =  spectro_data[key]['x'] - spectro_data[key]['x'][snapin_output['index_surf']] #shifted piezo distance
+            # spectro_data[key]['d'] =  spectro_data[key]['d'] - spectro_data[key]['d'][snapin_output['index_min']]
+            # spectro_data[key]['z'] =  spectro_data[key]['x'] - spectro_data[key]['x'][snapin_output['index_surf']] #shifted piezo distance
+            spectro_data[key]['z'] =  spectro_data[key]['x'] - stiffness_output['x_surf'] #shifted piezo distance
             if channel == 'Sample deformation':
                 spectro_data[key]['y'] = -spectro_data[key]['d'] 
                 if key == 'approach':
