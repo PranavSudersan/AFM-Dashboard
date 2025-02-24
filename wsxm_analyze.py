@@ -100,7 +100,8 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
              'Amplitude dissipated': {},
              'Energy dissipated': {},
              'Frequency shift': {},
-             '2nd Feedback Out': {}
+             '2nd Feedback Out': {},
+             'Lateral force': {},
             }
 
 # calibration dictionary for each channel. ADD MORE CHANNELS!
@@ -162,7 +163,8 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                                   'Hz': {'factor':1, 'offset':0, 'Hz': 1},
                                   'kHz': {'factor':1, 'offset':0, 'Hz': 0.001}
                                   },
-              '2nd Feedback Out': {'V': {'factor':1, 'offset':0}}
+              '2nd Feedback Out': {'V': {'factor':1, 'offset':0}},
+              'Lateral force': {'V': {'factor':1, 'offset':0}},
              }
 
 #rename spectroscopy line to standard names: approach and retract

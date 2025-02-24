@@ -159,7 +159,7 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
         yax_dict[yvars_i] = f'y{i+1}'
         i += 1
     
-    fig.update_xaxes(domain=[0.15, 0.85], title_text='Z',
+    fig.update_xaxes(domain=[0.15, 0.85], title_text=x,#'Z', #TODO: add units here!
                      showline=True,
                      showgrid=False,
                      zeroline=False,
@@ -225,10 +225,10 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=Non
         yvars_new = [yvar_i for yvar_i in yvars if yvar_i not in yvars_old]
     
     for yvars_i in yvars_new:
-        unit_text = unit_dict[yvars_i] if unit_dict != None else ''
+        unit_text = f" [{unit_dict[yvars_i]}]" if unit_dict != None else ''
         if i == 0:
             fig.update_layout(yaxis=dict(
-                title_text=f"{yvars_i} [{unit_text}]",                
+                title_text=f"{yvars_i}{unit_text}",                
                 showline=True,
                 showgrid=False,
                 zeroline=False,
@@ -242,7 +242,7 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=Non
             ))
         elif i == 1:
             fig.update_layout({'yaxis2':dict(
-                title_text=f"{yvars_i} [{unit_text}]",                
+                title_text=f"{yvars_i}{unit_text}",                
                 showline=True,
                 showgrid=False,
                 zeroline=False,
@@ -259,7 +259,7 @@ def plotly_multiyplot_initax(fig, yvars, yax_dict, unit_dict=None, font_dict=Non
             )})
         else:
             fig.update_layout({f'yaxis{i+1}': dict(
-                title_text=f"{yvars_i} [{unit_text}]",
+                title_text=f"{yvars_i}{unit_text}",
                 showline=True,
                 showgrid=False,
                 zeroline=False,
