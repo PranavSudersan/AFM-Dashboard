@@ -82,11 +82,19 @@ def flatten_plane(img_data, points, order=1):
 
 
 #cluster image data using kmeans clustering algorithm. Returns a label image of the same shape, 
-#where label numbers correspond to each cluster: 0, 1, 2 etc.
+#where label numbers correspond to each cluster: 0, 1, 2 etc. The label values are sorted in same order as
+#cluster center values in ascending order
 def segment_kmeans(data, n_clusters):
     chan_data = data['Z']
     kmeans = KMeans(n_clusters=n_clusters) # Create a KMeans instance with 2 clusters: kmeans
     data_reshaped = chan_data.reshape(-1, 1)
     kmeans.fit(data_reshaped)
     labels = kmeans.labels_
-    return labels.reshape(chan_data.shape)
+    # Get cluster centers and sort their indices in ascending order
+    sorted_cluster_indices = np.argsort(kmeans.cluster_centers_.flatten())    
+    # Create a mapping from original labels to new labels
+    label_mapping = {old_label: new_label for new_label, old_label in enumerate(sorted_cluster_indices)}    
+    # Apply mapping to relabel clusters
+    sorted_labels = np.vectorize(label_mapping.get)(kmeans.labels_)
+    return sorted_labels.reshape(chan_data.shape)
+    # return labels.reshape(chan_data.shape)

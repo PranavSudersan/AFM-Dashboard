@@ -9,6 +9,8 @@ import pandas as pd
 from wsxm_analyze import convert_spectro2df, get_imgdata, get_calibdict_value, SPECT_DICT
 from plot_funcs import plotly_lineplot, plotly_heatmap, fig2html, imagedf_to_excel
 import transform_funcs as tsf
+import plotly.io as pio
+# from numba import njit
 
 DATA_TYPES = {'short':(2,'h'),'short-data':(2,'h'), 'unsignedshort':(2,'H'),
               'integer-data':(4,'i'), 'signedinteger':(4,'i'),
@@ -63,6 +65,7 @@ def wsxm_get_common_files(filepath, ext=None):
 
 
 #read WSxM header data
+# @njit
 def wsxm_readheader(file, pos=0, inibyte=100):
     header_dict = {}
     title_list = []
@@ -95,6 +98,7 @@ def wsxm_readheader(file, pos=0, inibyte=100):
     return header_dict, pos_new
 
 #read WSxM binary image data
+# @njit
 def wsxm_readimg(file, header_dict, pos):
     data_format = header_dict['Image Data Type [General Info]']
     chan_label = header_dict['Acquisition channel [General Info]']
@@ -158,7 +162,8 @@ def wsxm_readimg(file, header_dict, pos):
     return data_dict_chan, pos
     
 # Read WSxM channel image data
-def wsxm_readchan(filepath, all_files=False, mute=False):
+# @njit
+def wsxm_readchan(filepath, all_files=False, extra_channels=False, mute=False):
     if all_files == True: #find all channels and directions of this measurement
         filepath_all = wsxm_get_common_files(filepath)
     else:
@@ -183,7 +188,8 @@ def wsxm_readchan(filepath, all_files=False, mute=False):
                 data_dict[chan_label][x_dir] = data_dict_chan
             file.close()
     if all_files == True:
-        wsxm_calc_extrachans(data_dict, data_type='2D')
+        if extra_channels == True:
+            wsxm_calc_extrachans(data_dict, data_type='2D')
         return data_dict
     else: #only return the specifc data dictionary for single file if all files are not read
         return data_dict_chan
@@ -330,7 +336,7 @@ def wsxm_readcur(path):
         y_label = header_dict['Y axis text [General Info]'].split('[')[0].strip()
         x_label = header_dict['X axis text [General Info]'].split('[')[0].strip()
         if header_dict['Index of this Curve [Control]'] == 'Average': #for average curves
-            curv_ind = header_dict['Index of this Curve [Control]']
+            curv_ind = 0 #header_dict['Index of this Curve [Control]'] CHECK!
         else:
             curv_ind = int(header_dict['Index of this Curve [Control]'])
         curv_num = int(header_dict['Number of Curves in this serie [Control]'])
@@ -391,7 +397,7 @@ def wsxm_readcur(path):
             curv_ind_j = curv_ind + round(j/(line_num/len(line_order)), 2) if line_num > 2 else curv_ind
             data_dict[y_label]['curves'][curv_ind_j] = {'header': header_dict.copy(), 'data': {}}
             for i, curv_dir in enumerate(line_order):
-                print(i,j,k, k+(2*i), k+(2*i+1))
+                # print(i,j,k, k+(2*i), k+(2*i+1))
                 data_dict[y_label]['curves'][curv_ind_j]['data'][curv_dir] = {'x': data_mat[:,k+(2*i)].max()-data_mat[:,k+(2*i)], #reverse x data
                                                                             'y': chan_offs+(data_mat[:,k+(2*i+1)]*chan_fact) #converted to units
                                                                             }
@@ -565,7 +571,7 @@ def wsxm_readspectra1(filepath, all_files=False, mute=False):
         return data_dict[chan_label_f]['curves'][curv_ind_f]
 
 # Read WSxM 1D spectroscopy data and curves for all available channels
-def wsxm_readspectra(filepath, all_files=False, mute=False):
+def wsxm_readspectra(filepath, all_files=False, extra_channels=False, mute=False):
     # if all_files == True: #find all channels and directions of this measurement
     if all_files == True:
         filepath_all = wsxm_get_common_files(filepath)
@@ -598,6 +604,7 @@ def wsxm_readspectra(filepath, all_files=False, mute=False):
         #         curv_ind_f = list(temp_dict[chan_label_f]['curves'].keys())[0] #temp_dict[chan_label]['header']['Index of this Curve [Control]']
         # elif all_files == True:
         if path_ext == '.curves': # read *.curves spectroscopy files
+            # print('curve')
             temp_dict, chan_label = wsxm_readcurves(path)
             if chan_label not in data_dict.keys():
                 data_dict[chan_label] = temp_dict[chan_label].copy()
@@ -629,13 +636,16 @@ def wsxm_readspectra(filepath, all_files=False, mute=False):
         
     
     if all_files == True:
-        wsxm_calc_extrachans(data_dict, data_type='1D')
+        # print('before extra')
+        if extra_channels==True:
+            wsxm_calc_extrachans(data_dict, data_type='1D')
+        # print('after extra')
         return data_dict
     else:  #only return the specifc data dictionary for single file if all files are not read
-        return data_dict[chan_label_f]['curves'][curv_ind_f]
+        return data_dict[chan_label_f]['curves'][curv_ind_f] #CHECK! INCLUDE ALL CURVES, NOT JUST THE FIRST ONE!
 
 # Read WSxM Force volume data
-def wsxm_readforcevol(filepath, all_files=False, topo_only=False, mute=False):
+def wsxm_readforcevol(filepath, all_files=False, extra_channels=False, topo_only=False, mute=False):
     if all_files == True: #find all channels and directions of this measurement
         filepath_all = wsxm_get_common_files(filepath)
     else:
@@ -748,8 +758,10 @@ def wsxm_readforcevol(filepath, all_files=False, topo_only=False, mute=False):
                 data_dict[chan_label][spec_dir] = data_dict_chan
             file.close()
         
-        # pos += data_len #bytes read so far  
-    wsxm_calc_extrachans(data_dict, data_type='3D')
+        # pos += data_len #bytes read so far 
+    if extra_channels==True:
+        wsxm_calc_extrachans(data_dict, data_type='3D')
+    
     return data_dict
 
 # add additional channels to data_dict
@@ -842,6 +854,19 @@ def wsxm_calc_extrachans(data_dict, data_type):
     if 'Normal deflection' in channels and data_type in ['1D', '3D']:
         data_dict['Sample deformation'] = dict(data_dict['Normal deflection'])
 
+    #frequency shift data channel
+    if 'Excitation frequency' in channels and data_type == '2D':
+        freq_data = data_dict['Excitation frequency']
+        data_dict['Frequency shift'] = {}
+        for freq_i in freq_data.items():
+            img_dir = freq_i[0]
+            data_dict['Frequency shift'][img_dir] = {'data': {'X':freq_i[1]['data']['X'],
+                                                             'Y':freq_i[1]['data']['Y'],
+                                                             'Z':float(freq_i[1]['header']['Resonance frequency [Dynamic settings]'].split(' ')[0])-freq_i[1]['data']['Z'] #CHECK THIS
+                                                             },
+                                                    'header':freq_i[1]['header']
+                                                   }
+        
     if all(c in channels for c in ['Amplitude', 'Phase', 'Excitation frequency']) == True and data_type in ['1D']:
         amp_data = data_dict['Amplitude']
         phase_data = data_dict['Phase']
@@ -1222,7 +1247,7 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         # channel_i = 'Topography' #only check topo image for force volume data
                         # feedback_i = ''
                         #Topo channel only taken for image display
-                        data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, topo_only=True, mute=True)
+                        data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, extra_channels=False, topo_only=True, mute=True)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Acquisition channel [General Info]']
                         # print(header_i)
@@ -1249,13 +1274,17 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                                                             y=data_dict_chan_i['data']['Y'],
                                                             z_mat=z_data_i, style='clean'), 
                                              plot_type='plotly')
+                            # fig_i = pio.to_html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                            #                                     y=data_dict_chan_i['data']['Y'],
+                            #                                     z_mat=z_data_i, style='clean'), 
+                            #                      full_html=False, include_plotlyjs=False)
                         else:
                             fig_i = ''
                     elif path_ext_i in ['.curves', '.stp', '.cur']:
                         data_type_i = '1D'
                         # channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
                         # feedback_i = ''
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, mute=True)
+                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False, mute=True)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Spectroscopy channel']
                         spec_dir_i = list(data_dict_chan_i['data'].keys())
@@ -1281,7 +1310,8 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                             g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                             fig_i = fig2html(g_i.figure, plot_type='matplotlib')
                             plt.clf()
-                            # fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                            # fig_i = pio.to_html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), 
+                            #                     full_html=False, include_plotlyjs=False)
                         else:
                             fig_i = ''
                         # plt.close()
@@ -1290,7 +1320,7 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         # channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
                         file_tags_i = filename_i[match_i.start()+6:].split('.')
                         
-                        data_dict_chan_i = wsxm_readchan(path_i, all_files=False, mute=True)
+                        data_dict_chan_i = wsxm_readchan(path_i, all_files=False, extra_channels=False, mute=True)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Acquisition channel [General Info]']
                         res_i = header_i['Number of rows [General Info]'] + 'x' + header_i['Number of columns [General Info]']
@@ -1312,6 +1342,10 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                                                             y=data_dict_chan_i['data']['Y'],
                                                             z_mat=z_data_i, style='clean'), 
                                              plot_type='plotly')
+                            # fig_i = pio.to_html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                            #                                 y=data_dict_chan_i['data']['Y'],
+                            #                                 z_mat=z_data_i, style='clean'), 
+                            #                     full_html=False, include_plotlyjs=False)
                         else:
                             fig_i = ''
                         
@@ -1321,7 +1355,7 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         filename_com_i = filename_i[:-4]
                         data_type_i = '1D'
                         # channel_i = 'Other'
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False)
+                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Spectroscopy channel']                        
                         res_i = header_i['Number of points [General Info]']
@@ -1340,7 +1374,8 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                             g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                             fig_i = fig2html(g_i.figure, plot_type='matplotlib')
                             plt.clf()
-                            # fig_i = fig2html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), plot_type='plotly')
+                            # fig_i = pio.to_html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"),
+                            #                     full_html=False, include_plotlyjs=False)
                         else:
                             fig_i = ''
                         # sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
@@ -1384,3 +1419,304 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
         file_df.to_pickle(folderpath / f"filelist_{folderpath.name}.pkl")
     
     return file_df
+
+def wsxm_readgeneral(filepath, channels = [], flatten_chan=[], img_dirs = []):#, make_plot=True):
+    # for fnum_i, path_i in enumerate(folderpath.iterdir()):
+    fig_dict = {}
+    filename = filepath.name
+    # print(fnum_i, filename_i)
+    # path_i = os.path.join(folderpath,filename_i)
+    if os.path.isfile(filepath):
+        match = re.search(r'\_\d{4}', filename) #regex to find 4 digit number in filename
+        time = datetime.datetime.fromtimestamp(os.path.getmtime(filepath)) #time of file modified (from file metadata)
+        path_ext = os.path.splitext(filepath)[1] #file extension
+        if path_ext in ['.pkl','.xlsx','.txt', '.psdata', '.xlsx#', '.wsxm', '.MOV']: #ignore pickle and excel and other files
+            return None
+            # continue #TODO: make a good filter to avoid other files than raw WSxM files
+        if match != None:
+            # print(datetime.datetime.now().strftime("%H:%M:%S"), filename)
+            # filename_com = filename[:match.start()+5]
+            if path_ext == '.gsi':
+                # data_type = '3D'
+                # channel = 'Topography' #only check topo image for force volume data
+                # feedback = ''
+                #Topo channel only taken for image display
+                data_dict_chan = wsxm_readforcevol(filepath, all_files=False, extra_channels=False, topo_only=True, mute=True)
+                # header = data_dict_chan['header']
+                # channel = header['Acquisition channel [General Info]']
+                # # print(header)
+                # z_pts = int(header['Number of points per ramp [General Info]'])
+                # z_extrema = [float(header[f'Image {z_pts-1:03} [Spectroscopy images ramp value list]'].split(' ')[0]),
+                #                float(header['Image 000 [Spectroscopy images ramp value list]'].split(' ')[0])]
+                # res = header['Number of rows [General Info]'] + 'x' + header['Number of columns [General Info]'] + 'x' + header['Number of points per ramp [General Info]']
+                # size = header['X Amplitude [Control]'] + ' x ' + header['Y Amplitude [Control]'] + ' x ' + f'{int(max(z_extrema))}' + ' ' + header['Image 000 [Spectroscopy images ramp value list]'].split(' ')[1]
+                # xx, yy, zz = getmgdata(data_dict_chan)
+                # plt.pcolormesh(xx, yy, zz, cmap='afmhot')
+                # plt.axis('off')
+                # fig = fig2html(plt.gcf(), plot_type='matplotlib')
+                # plt.close()
+                # z_max = data_dict_chan['data']['Z'].max()
+                # z_min = data_dict_chan['data']['Z'].min()
+                # z_avg = data_dict_chan['data']['Z'].mean()
+                flattenchan_matches = []
+                for flattenchan_key in flatten_chan:
+                    if flattenchan_key.lower() in channel.lower():
+                        flattenchan_matches.append(channel)
+                if flatten_chan == 'all' or len(flattenchan_matches) > 0:
+                # if flatten_chan == 'all' or 'Topography' in flatten_chan: #channel == 'Topography': #only flatten topography images
+                    z_data = tsf.flatten_line(data_dict_chan['data'], order=1)
+                else:
+                    z_data = data_dict_chan['data']['Z']
+                # z_data = tsf.flatten_line(data_dict_chan['data'], order=1) #flatten topography
+                # if make_plot == True:
+                # fig = fig2html(plotly_heatmap(x=data_dict_chan['data']['X'],
+                #                                 y=data_dict_chan['data']['Y'],
+                #                                 z_mat=z_data, style='clean'), 
+                #                  plot_type='plotly')
+                # plt.clf()
+                # fig_dict['Topography'] = fig
+                plt.figure(figsize=(2,2)) #TODO: MOVE PLOTS TO PLOT_FUNCS
+                g = sns.heatmap(data=z_data, cmap="afmhot",  cbar=False, xticklabels=False, yticklabels=False)
+                plt.gca().set_xticks([])
+                plt.gca().set_yticks([])
+                plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+                
+                # print('c')
+                # else:
+                    # fig = ''
+                # plt.clf()
+                # img_bytes = fig.to_image(format="png", width=50, height=50, scale=0.1)
+                # fig_html = pio.to_html(fig, full_html=False)#, include_plotlyjs=False)#, default_width=200, default_height=200)
+                fig_dict['Topography'] = g.figure#fig#fig_html
+                plt.close(g.figure)
+                # else:
+                    # fig = ''
+            elif path_ext in ['.curves', '.stp', '.cur']:
+                data_type = '1D'
+                # channel = filename[match.start()+6:].split('.')[0].split('_')[0]
+                # feedback = ''
+                # data_dict[chan_label]['curves'][curv_ind_i]
+                # print('a')
+                data_dict = wsxm_readspectra(filepath, all_files=True, extra_channels=False, mute=True)
+                # print('b')
+                for channel, data_dict_chan in data_dict.items():
+                    # if len(channels) != 0 and channel not in channels:
+                    #     continue
+                    if len(channels)!=0:
+                        chan_matches = []
+                        for chan_key in channels:
+                            if chan_key.lower() in channel.lower():
+                                chan_matches.append(channel)
+                        if len(chan_matches) == 0:
+                            continue
+                    spectrodf_list = []
+                    for curv_id, data_dict_curv in data_dict_chan['curves'].items():
+                        # header = data_dict_curv['header']
+                        # channel = header['Spectroscopy channel']
+                        # spec_dir = list(data_dict_curv['data'].keys())
+                        
+                        # if path_ext == '.stp':                            
+                        #     res = header['Number of columns [General Info]']
+                        #     size = header['X Amplitude [Control]']
+                        # else: #for *.curves and *.cur
+                        #     res = header['Number of points [General Info]']
+                        #     size = str(data_dict_curv['data'][spec_dir[0]]['x'].max())  + ' ' + header['X axis unit [General Info]']
+                        spectrodf = convert_spectro2df(data_dict_curv['data'])
+                        spectrodf['curve number'] = curv_id
+                        spectrodf_list.append(spectrodf)
+                        # sns.lineplot(data=spectrodf, x="x", y="y", hue="segment")
+                        # fig = fig2html(plt.gcf())
+                        # z_avg = spectrodf.groupby(['segment']).mean()['y'].to_dict()
+                        # z_min = spectrodf.groupby(['segment']).min()['y'].to_dict()
+                        # z_max = spectrodf.groupby(['segment']).max()['y'].to_dict()
+                        # z_max = spectrodf['y'].max()
+                        # z_min = spectrodf['y'].min()
+                        # z_avg = spectrodf['y'].mean()
+                        # if make_plot == True:
+                            # g = plt.plot(spectrodf['x'], spectrodf['y']) #sns.lineplot(data=spectrodf, x="x", y="y", hue="segment")
+                            # fig = fig2html(plt.gcf(), plot_type='matplotlib')
+                    spectrodf_all = pd.concat(spectrodf_list)
+                    plt.figure(figsize=(2,2))
+                    g = sns.lineplot(data=spectrodf_all, x="x", y="y", hue="segment", style='curve number', legend=False)
+                    plt.gca().set_xticks([])
+                    plt.gca().set_yticks([])
+                    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+                    # fig = fig2html(g.figure, plot_type='matplotlib')
+                    # plt.clf()
+                    # print(channel, curv_id)
+                    # fig = plotly_lineplot(data=spectrodf, x="x", y="y", color="segment")
+                    # fig_html = pio.to_html(fig, full_html=False)
+                    fig_dict[f'{channel}'] = g.figure#fig#fig_html
+                    plt.close(g.figure)
+                    # fig = fig2html(plotly_lineplot(data=spectrodf, x="x", y="y", color="segment"), plot_type='plotly')
+                # else:
+                    # fig = ''
+                # plt.close()
+                plt.clf()
+            else:
+                data_type = '2D'
+                # channel = WSXM_CHANNEL_DICT[path_ext[1:]]
+                file_tags = filename[match.start()+6:].split('.')
+                # print('a')
+                data_dict = wsxm_readchan(filepath, all_files=True, extra_channels=False, mute=True)
+                # data_dict = parallel_file_processing(filepath, all_files=True, mute=True)
+                # print('b')
+                # fig_dict = {}
+                # fig_dict = parallel_plotting(data_dict, flatten_chan, channels)
+                for channel, data_dict_chan in data_dict.items():
+                    # if len(channels) != 0 and channel not in channels:
+                    if len(channels)!=0:
+                        chan_matches = []
+                        for chan_key in channels:
+                            if chan_key.lower() in channel.lower():
+                                chan_matches.append(channel)
+                        if len(chan_matches) == 0:
+                            continue
+                    for x_dir, data_dict_dir in data_dict_chan.items():
+                        if len(img_dirs) != 0 and x_dir not in img_dirs:
+                            continue
+                        # header = data_dict_dir['header']
+                        # channel = header['Acquisition channel [General Info]']
+                        # res = header['Number of rows [General Info]'] + 'x' + header['Number of columns [General Info]']
+                        # size = header['X Amplitude [Control]'] + ' x ' + header['Y Amplitude [Control]']
+                        # feedback = header['Input channel']
+                        # xx, yy, zz = getmgdata(data_dict_chan)
+                        # plt.pcolormesh(xx, yy, zz, cmap='afmhot')
+                        
+                        # plt.axis('off')
+                        # z_max = data_dict_dir['data']['Z'].max()
+                        # z_min = data_dict_dir['data']['Z'].min()
+                        # z_avg = data_dict_dir['data']['Z'].mean()
+                        # print('a')
+                        flattenchan_matches = []
+                        for flattenchan_key in flatten_chan:
+                            if flattenchan_key.lower() in channel.lower():
+                                flattenchan_matches.append(channel)
+                        if flatten_chan == 'all' or len(flattenchan_matches) > 0:
+                        # if flatten_chan == 'all' or channel in flatten_chan: #channel == 'Topography': #only flatten topography images
+                            z_data = tsf.flatten_line(data_dict_dir['data'], order=1)
+                        else:
+                            z_data = data_dict_dir['data']['Z']
+                        # if make_plot == True:
+                        # print(channel, x_dir)
+                        # fig = plotly_heatmap(x=data_dict_dir['data']['X'],
+                        #                                 y=data_dict_dir['data']['Y'],
+                        #                                 z_mat=z_data, style='clean')
+                        plt.figure(figsize=(2,2)) #TODO: MOVE PLOTS TO PLOT_FUNCS
+                        g = sns.heatmap(data=z_data, cmap="afmhot",  cbar=False, xticklabels=False, yticklabels=False)
+                        plt.gca().set_xticks([])
+                        plt.gca().set_yticks([])
+                        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+                        
+                        # print('c')
+                        # else:
+                            # fig = ''
+                        # plt.clf()
+                        # img_bytes = fig.to_image(format="png", width=50, height=50, scale=0.1)
+                        # fig_html = pio.to_html(fig, full_html=False)#, include_plotlyjs=False)#, default_width=200, default_height=200)
+                        fig_dict[f'{channel}_{x_dir}'] = g.figure#fig#fig_html
+                        plt.close(g.figure)
+                plt.clf()
+                # print('c')
+                
+                # plt.close()
+        else: #if no match for 4 digit counter found in file name
+            if path_ext == '.cur': #read other *.cur file e.g. tuning
+                # print('others')
+                # filename_com = filename[:-4]
+                # data_type = '1D'
+                # channel = 'Other'
+                data_dict_chan = wsxm_readspectra(filepath, all_files=False, extra_channels=False, mute=True)
+                # for channel, data_dict_chan in data_dict.items():
+                #     print('a', channel)
+                #     for curv_id, data_dict_curv in data_dict_chan['curves'].items():
+                #         print('here')
+                # data_dict_chan = wsxm_readspectra(filepath, all_files=False)
+                header = data_dict_chan['header']
+                channel = header['Spectroscopy channel']                        
+                # res = header['Number of points [General Info]']
+                spec_dir = list(data_dict_chan['data'].keys())
+                chan_matches = []
+                if len(channels)!=0:
+                    for chan_key in channels:
+                        if chan_key.lower() in channel.lower():
+                            chan_matches.append(channel)
+                    # if len(chan_matches) == 0:
+                    #     continue
+                # if (len(channels) != 0 and channel in channels) or len(channels) == 0:
+                if (len(channels) != 0 and len(chan_matches) > 0) or len(channels) == 0:
+                    # print('continue')
+                    # continue
+                # size = str(data_dict_chan['data'][spec_dir[0]]['x'].max())  + ' ' + header['X axis unit [General Info]']
+                # feedback = ''
+                    spectrodf = convert_spectro2df(data_dict_chan['data'])
+                    #calculate statistics for each segment data 
+                    # z_avg = spectrodf.groupby(['segment']).mean()['y'].to_dict()
+                    # z_min = spectrodf.groupby(['segment']).min()['y'].to_dict()
+                    # z_max = spectrodf.groupby(['segment']).max()['y'].to_dict()
+                    # z_max = spectrodf['y'].max()
+                    # z_min = spectrodf['y'].min()
+                    # z_avg = spectrodf['y'].mean()
+                    # if make_plot == True:
+                            # g = sns.lineplot(data=spectrodf, x="x", y="y", hue="segment") #TODO: SHOW ALL CURVES IN ONE FIGURE
+                            # fig = fig2html(g.figure, plot_type='matplotlib')
+                            # plt.clf()
+                            # fig_dict[f'{channel}_{curv_id}'] = fig
+                    plt.figure(figsize=(2,2))
+                    g = sns.lineplot(data=spectrodf, x="x", y="y", hue="segment", legend=False)
+                    plt.gca().set_xticks([])
+                    plt.gca().set_yticks([])
+                    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+                    fig_dict[f'{channel}_{spec_dir}'] = g.figure#fig#fig_html
+                    plt.close(g.figure)
+                    # print(channel, spec_dir)
+                    plt.clf()
+                    # fig = fig2html(plotly_lineplot(data=spectrodf, x="x", y="y", color="segment"), plot_type='plotly')
+                # else:
+                    # fig = ''
+                # sns.lineplot(data=spectrodf, x="x", y="y", hue="segment")
+                # fig = fig2html(plt.gcf())
+                # plt.close()
+        # print(filename)
+        plt.close()
+    return fig_dict
+
+def get_wsxm_filelist(folderpath, file_ext=[]):
+    file_dict = {'name': [], 'time':[], 'size': [], 'path': []}
+    for fnum_i, path_i in enumerate(folderpath.iterdir()):
+        filename_i = path_i.name
+        # print(fnum_i, filename_i, path_i)
+        # path_i = os.path.join(folderpath,filename_i)
+        if os.path.isfile(path_i):
+            match_i = re.search(r'\_\d{4}', filename_i) #regex to find 4 digit number in filename
+            time_i = datetime.datetime.fromtimestamp(os.path.getmtime(path_i)) #time of file modified (from file metadata)
+            path_ext_i = os.path.splitext(path_i)[1] #file extension
+            if len(file_ext) != 0 and path_ext_i not in file_ext: #skip files that are not of file_ext extensions
+                continue
+            # mod_time_i = os.path.getmtime(path_i)
+            formatted_date_i = time_i.strftime('%Y-%m-%d %H:%M:%S')
+            size_i = round(os.path.getsize(path_i)/1000, 1) #in kB
+            
+            if path_ext_i in ['.pkl','.xlsx','.txt', '.psdata', '.xlsx#', '.wsxm', '.MOV']: #ignore pickle and excel and other files
+                continue #TODO: make a good filter to avoid other files than raw WSxM files. REMOVE .MOV!
+            if match_i != None:
+                # print(datetime.datetime.now().strftime("%H:%M:%S"), filename_i)
+                filename_com_i = filename_i[:match_i.start()+5]
+            else: #if no match for 4 digit counter found in file name
+                if path_ext_i == '.cur': #read other *.cur file e.g. tuning
+                    filename_com_i = filename_i[:-4]
+                else:
+                    continue
+        else:
+            continue
+        # filename_com_dict[filename_com_i] = (formatted_date_i, size_i)
+        if filename_com_i not in file_dict['name']:
+            file_dict['name'].append(filename_com_i)
+            file_dict['time'].append(formatted_date_i)
+            file_dict['size'].append(size_i)
+            file_dict['path'].append(path_i)
+
+    file_df = pd.DataFrame.from_dict(file_dict)
+    file_df.sort_values(by=['time'], inplace=True, ignore_index=True)
+    return file_df
+            

@@ -38,6 +38,9 @@ def set_theme(theme):
     THEME = theme
     plt.style.use(THEME_DICT[THEME]['matplotlib'])
 
+def get_theme():
+    return THEME_DICT[THEME]
+
 # def set_theme(theme):
 #     THEME = 
 #convert matplotlib colormaps to plotly format. set source='plotly' to directly take plotly colourmaps
@@ -455,9 +458,12 @@ def seaborn_pairplot(data, cols=None, hue=None, diag_kind='kde', plot_kws=None, 
 #line plot x vs y grouped by color column of dataframe data.
 def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, symbol=None, 
                     height=400, width=500, font_dict=None, color_discrete_sequence=None, line_dash_sequence=None,
-                   symbol_sequence=None):    
+                   symbol_sequence=None):   
+    if color_discrete_sequence == None:
+        color_discrete_sequence = THEME_DICT[THEME]['linecolor']
     fig = px.line(data, x=x, y=y, color=color, line_group=line_group, line_dash=line_dash,
-                  symbol=symbol, color_discrete_sequence=color_discrete_sequence, line_dash_sequence=line_dash_sequence,
+                  symbol=symbol, color_discrete_sequence=color_discrete_sequence, 
+                  line_dash_sequence=line_dash_sequence,
                   symbol_sequence=symbol_sequence)
     # if font_dict == None:
     #     font_dict=dict(family='Arial',size=16,color=THEME_DICT[THEME]['fontcolor'])#'white')
@@ -503,6 +509,7 @@ def plotly_lineplot(data, x, y, color=None, line_group=None, line_dash=None, sym
 #plot heat map. here x,y are 1d arrays and z is 2d matrix array
 def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full', 
                    height=400, width=480, font_dict=None, opacity=1):
+    # print('plot start')
     fig = go.Figure(data=go.Heatmap(z=z_mat, x=x, y=y, type = 'heatmap', colorscale=color, 
                                     zmin=np.percentile(z_mat,1, method='midpoint'),
                                     zmax=np.percentile(z_mat,99, method='midpoint'), opacity=opacity
@@ -554,6 +561,7 @@ def plotly_heatmap(x=None, y=None, z_mat=None, color=cm_afmhot, style='full',
                           width=width,#1.2*400,
                           plot_bgcolor=THEME_DICT[THEME]['bgcolor'],#"white",
                           margin=dict(t=10,l=10,b=10,r=10))
+    # print('plot end')
     return fig
 
 def plotly_3dplot(z_3d, z_colour, x, y, cmap=cm_afmhot, height=700, width=1100, font_dict=None, title=None,
@@ -777,12 +785,19 @@ def plot_forcevol_histogram(output_df, plot_type='histogram', bins=128, prange=1
 
 #convert matplotlib/plot plot to html for Jupyter display
 def fig2html(fig, plot_type, dpi=300, width=200, height=200, pad=0):
+    # print('start')
     # Save the plot as binary data
     if plot_type == 'matplotlib':
         buf = io.BytesIO()
         fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=pad, dpi=dpi)
         buf.seek(0)
-        image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
+        image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        # buf = io.BytesIO()
+        # fig.savefig(buf, format="svg", bbox_inches="tight")
+        # buf.seek(0)
+        # encoded = base64.b64encode(buf.read()).decode("utf-8")
+        # buf.close()
+        # return f'<img src="data:image/svg+xml;base64,{encoded}" width="{width}"/>'
     elif plot_type == 'plotly':
         # buf = fig.to_image(width=size, height=size)
         image_base64 = base64.b64encode(fig.to_image()).decode('ascii')
@@ -792,6 +807,7 @@ def fig2html(fig, plot_type, dpi=300, width=200, height=200, pad=0):
     # Create an HTML image tag
     # '<img src="data:image/png;base64,{}"/>'.format(fig)
     image_tag = f'<img src="data:image/png;base64,{image_base64}" width="{width}" height="{height}"/>'
+    # print('end')
     return image_tag
 
 

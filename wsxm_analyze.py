@@ -26,7 +26,9 @@ from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, fig2
 #the previous channel. Use set_funcdict_kwargs inside spectro_funcs to update the corresponding kwargs of the parameters.
 #Also make sure to process channel data in the same order as FUNC_DICT
 FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
-                                                        'kwargs': {'method': 'gradient', #'gradient', 'minima'
+                                                        'kwargs': {
+                                                            'segment': 'approach',
+                                                            'method': 'gradient', #'gradient', 'minima'
                                                                    'min_percentile': 1, 
                                                                    'fit_order': 2,
                                                                    'back_pts': 10,
@@ -38,7 +40,9 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                        }
                                   },
              'Normal force': {'Adhesion': {'function': spf.adhesion,
-                                           'kwargs': {'method': 'simple',
+                                           'kwargs': {
+                                               'segment': 'retract',
+                                               'method': 'simple',
                                                       'zero_pts': 10,
                                                       'min_percentile': 1,
                                                       'fit_order': 2
@@ -47,7 +51,9 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                            'unit': '[Normal force]'
                                            },
                               'Stiffness': {'function': spf.stiffness,
-                                            'kwargs': {'method': 'best gradient', #'best gradient', 'simple poly'
+                                            'kwargs': {
+                                                'segment': 'approach',
+                                                'method': 'best gradient', #'best gradient', 'simple poly'
                                                        'fit_order':1, #1,2 for "best gradient" method
                                                        'snapin_index': None, #updated after running spf.snapin above
                                                        'percentile_range': (0, 50),
@@ -58,7 +64,9 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                             },
                               },
              'Amplitude': {'Slope-amp':{'function': spf.ampslope,
-                                        'kwargs': {'filter_size': 20,
+                                        'kwargs': {
+                                            'segment': 'approach',
+                                            'filter_size': 20,
                                                    'method': 'fit', #'fit','average'
                                                    'max_percentile': 99,
                                                    'change': 'up',
@@ -69,13 +77,17 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                         'unit': '[Amplitude]/[Z]'
                                         },
                            'Growth rate':{'function': spf.ampgrowth,
-                                          'kwargs': {'change': 'up'},
+                                          'kwargs': {
+                                              'segment': 'approach',
+                                              'change': 'up'},
                                           'plot type': 'line',
                                           'unit': '1/[Z]'
                                         }
                           },
              'True Amplitude': {'True Slope-amp':{'function': spf.ampslope,
-                                                  'kwargs': {'filter_size': 20,
+                                                  'kwargs': {
+                                                      'segment': 'approach',
+                                                      'filter_size': 20,
                                                              'method': 'fit', #'fit','average'
                                                              'max_percentile': 99,
                                                              'change': 'down',
@@ -86,7 +98,7 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                   'unit': '[True Amplitude]/[Z]'
                                                  },
                                 'True Growth rate':{'function': spf.ampgrowth,
-                                                    'kwargs': {'change': 'down'},
+                                                    'kwargs': {'segment': 'approach','change': 'down'},
                                                     'plot type': 'line',
                                                     'unit': '1/[Z]'
                                                    }
@@ -182,6 +194,11 @@ def set_funcdict_kwargs(channel,param,kwargs):
     global FUNC_DICT
     for key, value in kwargs.items():
         FUNC_DICT[channel][param]['kwargs'][key] = value 
+
+#update kwargs for FUNCT_DICT
+def get_funcdict_kwargs(channel,param):
+    global FUNC_DICT
+    return FUNC_DICT[channel][param]['kwargs']
         
 def set_calibdict_values(channel,unit_kw):
     global CALIB_DICT

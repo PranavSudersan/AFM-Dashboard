@@ -5,8 +5,8 @@ from scipy.optimize import curve_fit
 import fit_funcs as ftf
 
 #calculated adhesion from minima. 'index' output used to calculated sample deformation later. 'zero' used for zero value
-def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
-    segment = 'retract'
+def adhesion(force_data, segment, method, zero_pts, min_percentile, fit_order):
+    # segment = 'retract'
     data_x, data_y = force_data[segment]['x'], force_data[segment]['y']
     ind_min = np.argmin(data_y)
     if ind_min != 0:
@@ -79,11 +79,11 @@ def adhesion(force_data, method, zero_pts, min_percentile, fit_order):
 #     # print(idx_min)
 #     return {'value': defl_zero - defl_min, 'segment': segment, 'x': [z_snapin, z_snapin], 'y': [defl_zero, defl_min]}
 
-def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero):
+def snapin(defl_data, segment, method, min_percentile, fit_order, back_pts, findmax, zero):
     from wsxm_analyze import set_funcdict_kwargs #set kwargs for other params from a parameter output
     # min_percentile = 1
     # fit_order = 2
-    segment = 'approach'
+    # segment = 'approach'
     data_x, data_y = defl_data[segment]['x'][1:], defl_data[segment]['y'][1:] #discard first point
     # test2_x, test2_y = test2['Z'], test2['ZZ'][:,y_ind,x_ind]
     # test_y_filt = ndimage.median_filter(test_y, size=filter_size) #filter
@@ -204,9 +204,9 @@ def snapin(defl_data, method, min_percentile, fit_order, back_pts, findmax, zero
 # for method: 'best gradient', gradient of data is filered and fitting range for data is found based on percentile_range of the filtered gradient.
 # the range is the longest chunk of consective data satifying the percentile condition. fit_order can be used to either do a linear fit or parabola fit
 #over this range (tangent returned as slope for the case of parabola again)
-def stiffness(force_data, method, fit_order, snapin_index, filter_size, percentile_range):
-    segment = 'approach'
-    fit_order=2
+def stiffness(force_data, segment, method, fit_order, snapin_index, filter_size, percentile_range):
+    # segment = 'approach'
+    # fit_order=2
     idx_min = snapin_index #np.argmin(force_data[segment]['y'])
     # try:
     if len(force_data[segment]['x'][idx_min:]) <= fit_order+1:
@@ -310,8 +310,8 @@ def stiffness(force_data, method, fit_order, snapin_index, filter_size, percenti
 #where high slope values are found and returns the slope of the fit
 #method 'minmax' find the minima and maxima and locates the amplitude change in data as factor of it initial standard deviation.
 #change_factor is that factor of change beyond std_dev and num_pts is the number of initial points used to estimate amp extrema
-def ampslope(amp_data, filter_size, method, max_percentile, change, num_pts, change_factor):
-    segment = 'approach'
+def ampslope(amp_data, segment, filter_size, method, max_percentile, change, num_pts, change_factor):
+    # segment = 'approach'
     if segment not in amp_data.keys():
         return {'value': 0, 'segment': '', 'x': [], 'd': [], 'z': [], 'y': []}
     amp_data_x, amp_data_y = amp_data[segment]['x'][1:], amp_data[segment]['y'][1:]
@@ -414,8 +414,8 @@ def ampslope(amp_data, filter_size, method, max_percentile, change, num_pts, cha
         return {'value': abs(slope), 'segment': segment, 'x': fit_x, 'y': fit_y}
 
 #sigmoidal fit amplitude data to get "growth rate"
-def ampgrowth(amp_data, change):
-    segment = 'approach'
+def ampgrowth(amp_data, segment, change):
+    # segment = 'approach'
     if segment not in amp_data.keys():
         return {'value': 0, 'segment': '', 'x': [], 'd': [], 'z': [], 'y': []}
     amp_data_x, amp_data_y = amp_data[segment]['x'][1:], amp_data[segment]['y'][1:]
