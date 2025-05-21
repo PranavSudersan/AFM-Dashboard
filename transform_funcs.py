@@ -7,7 +7,7 @@ def hypotenuse(a,b):
 
 #line-wise flattening of image along the x (fast) axis. order=0 subtracts each line by its mean (simple offset). 
 #order=1,2...subtract a fitted polynomial of that order to each line
-def flatten_line(data, order, pos_shift=True):
+def flatten_line(data, order, pos_shift=True, min_percentile=1):
     if len(data['Z'].shape) == 1:
         if order == 0:
             offset = np.mean(data['Z'])
@@ -22,7 +22,8 @@ def flatten_line(data, order, pos_shift=True):
             offset = np.array([np.poly1d(p[:,i])(data['X']) for i in range(p.shape[1])])
     data_flattened = data['Z']-offset
     if pos_shift == True:
-        data_flattened = data_flattened - data_flattened.min() #shift to make all values positive
+        # data_flattened = data_flattened - data_flattened.min() #shift to make all values positive
+        data_flattened = data_flattened - np.percentile(data_flattened, min_percentile, method='midpoint')
     return data_flattened
 
 
@@ -37,7 +38,7 @@ def poly_matrix(x, y, order=2):
 
 #flatten image by subtracting a fitted plane of "order" on "points" array
 #TODO: include point selection window, add modes for automatic (kmeans) or manual (thresholding/points) point selection
-def flatten_plane(img_data, points, order=1):
+def flatten_plane(img_data, points, order=1, min_percentile=1):
     # X,Y = np.meshgrid(self.df_matrix.columns,
     #                   self.df_matrix.index)
     X, Y = np.meshgrid(img_data['X'], img_data['Y'])
@@ -78,7 +79,8 @@ def flatten_plane(img_data, points, order=1):
     #                                      index=self.plot_y,
     #                                      columns=self.plot_x,
     #                                      aggfunc='first')
-    return Z_leveled - Z_leveled.min()
+    # return Z_leveled - Z_leveled.min()
+    return Z_leveled - np.percentile(Z_leveled, min_percentile, method='midpoint')
 
 
 #cluster image data using kmeans clustering algorithm. Returns a label image of the same shape, 
