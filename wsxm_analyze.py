@@ -724,9 +724,9 @@ def get_psd_calib(amp_data, phase_data):
     return freq_array_shifted, z_pow_avg, z_pow_max, z_rms, fig
 
 
-def get_calib(df_on, df_off, ind, T, lever_number, userid, password, datarange=(0,1)):
-    freq_raw = df_on['frequency'].iloc[ind]
-    psd_raw = df_on['psd'].iloc[ind] - df_off['psd'].iloc[ind]
+def get_calib(df_on, df_off, T, lever_number, userid, password, datarange=(0,1)):
+    freq_raw = df_on['frequency']
+    psd_raw = df_on['psd'] - df_off['psd']
     #only take a small window of data (if psd is bad)
     ind0, ind1 = int(datarange[0]*len(psd_raw)), int(datarange[1]*len(psd_raw))
     psd_final = psd_raw[ind0:ind1]
@@ -739,13 +739,13 @@ def get_calib(df_on, df_off, ind, T, lever_number, userid, password, datarange=(
     
     psd_data = pd.DataFrame({'Frequency': freq_raw, 
                              'final': psd_raw, 
-                             'laser on': df_on['psd'].iloc[ind],#[ind0:ind1],
-                             'laser off': df_off['psd'].iloc[ind],#[ind0:ind1]
+                             'laser on': df_on['psd'],#[ind0:ind1],
+                             'laser off': df_off['psd'],#[ind0:ind1]
                             })
     psd_df_long = pd.melt(psd_data, id_vars=['Frequency'], value_vars=['laser on', 'laser off', 'final'],
                          var_name='name', value_name='PSD')
     
-    zrms_i = (df_on['zrms'].iloc[ind]**2 - df_off['zrms'].iloc[ind]**2)**0.5 #CHECK THIS!
+    zrms_i = (df_on['zrms']**2 - df_off['zrms']**2)**0.5 #CHECK THIS!
     
     #guess = [0, 76000, 2000, 100000]
     y_guess = 0 #psd_final.min()
