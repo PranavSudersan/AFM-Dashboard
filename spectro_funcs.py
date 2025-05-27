@@ -99,15 +99,17 @@ def snapin(defl_data, segment, method, min_percentile, fit_order, back_pts, find
         # # amp_sobel = ndimage.sobel(test_y) #sobel transform
         # # amp_sobel = ndimage.sobel(test_y_filt) #sobel transform
         # # ind_max = np.argmax(amp_sobel)
-        # try:
+        # try:       
         if ind_min == 0:
+            zero_y = np.median(data_y[:back_pts]) #median of inital "back_pts" number of points of data_y, ignores normal deflection drift here unlike others
             return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'z': [],
-                    'index_min': 0, 'zero': 0}
+                    'index_min': 0, 'zero': zero_y}
         else:
             ind_maxs = np.where(data_y[:ind_min]>=np.percentile(data_y[:ind_min],min_percentile))[0]
             if len(ind_maxs) <= fit_order+1:
+                zero_y = np.median(data_y[:back_pts]) #median of inital "back_pts" number of points of data_y, ignores normal deflection drift here unlike others
                 return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'z': [],
-                        'index_min': 0, 'zero': 0}
+                        'index_min': 0, 'zero': zero_y}
             else:
                 # # testmin_x, testmin_y = test_x[ind_max], test_y[ind_max]
                 # # poly = np.poly1d([-amp_sobel[ind_max], testmin_y-(-amp_sobel[ind_max]*testmin_x)])
@@ -152,9 +154,22 @@ def snapin(defl_data, segment, method, min_percentile, fit_order, back_pts, find
         if ind_max == 0 or findmax == False: #set findmax=False to find global minima in gradient and ignore max gradient value
             ind_max = len(data_y)
         ind_min = np.argmin(data_y_sobel[:ind_max]) #point of snapin
+        
+        # if back_pts > ind_min:
+        #     back_pts = ind_min
+        # if zero == 'max': #set method by which "zero deflection" point is estimated 
+        #     zero_y =  data_y[ind_min:ind_min-back_pts:-1].max() #max of back_pts before index of high gradient
+        # elif zero == 'mean':
+        #     zero_y =  np.mean(data_y[ind_min:ind_min-back_pts:-1]) #mean of back_pts before index of high gradient
+        # elif zero == 'median':
+        #     zero_y =  np.median(data_y[ind_min:ind_min-back_pts:-1]) #median of back_pts before index of high gradient
+        # elif zero == 'ini':
+        #     zero_y = np.median(data_y[:back_pts]) #median of inital "back_pts" number of points of data_y, ignores normal deflection drift here unlike others
+
         if ind_min == 0:
+            zero_y = np.median(data_y[:back_pts]) #median of inital "back_pts" number of points of data_y, ignores normal deflection drift here unlike others
             return {'value': 0, 'segment': segment, 'x': [], 'y': [], 'd':[], 'z': [], 
-                    'index_surf': 0, 'index_min': 0, 'zero': 0}
+                    'index_surf': 0, 'index_min': 0, 'zero': zero_y}
         else:
             if back_pts > ind_min:
                 back_pts = ind_min

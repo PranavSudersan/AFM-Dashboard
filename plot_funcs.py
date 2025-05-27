@@ -126,15 +126,16 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
     for yvars_i in yvars_new:
         data_i = data[data[multiy_col]==yvars_i].reset_index(drop=True)
         #include error data
-        if yvars_i in errory_dict.keys():
-            data_i['error'] = data[data[multiy_col]==errory_dict[yvars_i]][y].reset_index(drop=True)
-            error_y = 'error'
-        else:
-            error_y = None
+        # if yvars_i in errory_dict.keys():
+        #     data_i['error'] = data[data[multiy_col]==errory_dict[yvars_i]][y].reset_index(drop=True)
+        #     error_y = 'error'
+        # else:
+        #     error_y = None
             
         trace_i = px.line(data_i, x=x, y=y, line_group=line_group, symbol=symbol, color=color,
                           hover_name=hover_name, line_dash=line_dash, symbol_sequence = ['circle'],
-                          error_y=error_y, color_discrete_sequence=linecolor_list)
+                          error_y=None, color_discrete_sequence=linecolor_list)
+        
         if color == None: #follow y axis colors for lines
             trace_i.update_traces(yaxis=f'y{i+1}', line_color=color_list[i],# if color==None else None,
                                   showlegend = False, name='',
@@ -159,6 +160,24 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
             fig.update_layout({f'yaxis{i+1}': dict(linecolor=yax_color,tickcolor=yax_color,
                                                    titlefont_color=yax_color,
                                                    tickfont_color=yax_color)})
+
+        # Add error band
+        if yvars_i in errory_dict.keys():
+            data_i['error'] = data[data[multiy_col]==errory_dict[yvars_i]][y].reset_index(drop=True)
+            fig.add_traces([
+                go.Scatter(
+                    x=np.concatenate([data_i[x], data_i[x][::-1]]),
+                    y=np.concatenate([data_i[y] + data_i['error'], (data_i[y] - data_i['error'])[::-1]]),
+                    fill='toself',
+                    fillcolor=color_list[i],
+                    opacity=0.5,
+                    line=dict(color='rgba(255,255,255,0)'), #invisible
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name='Error band'
+                )
+            ])
+        
         yax_dict[yvars_i] = f'y{i+1}'
         i += 1
     
