@@ -13,7 +13,7 @@ from Sader_GCI_demo import SaderGCI_CalculateK
 import spectro_funcs as spf
 import fit_funcs as ftf 
 import transform_funcs as tsf
-from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, fig2html
+from plot_funcs import plotly_lineplot, plotly_heatmap, plotly_dashedlines, seaborn_lineplot, matplotlib_dashedlines, fig2html
 
 #TODO: calibration dictionary to get in nm or nN from volts
 
@@ -700,7 +700,8 @@ def get_psd_calib(amp_data, phase_data):
     
     # plt.pcolormesh(zz, cmap='afmhot')    
     # plt.colorbar()
-    fig = fig2html(plotly_heatmap(z_mat=zz_amp_full, x=None, y=None), plot_type='plotly')
+    # fig = fig2html(plotly_heatmap(z_mat=zz_amp_full, x=None, y=None), plot_type='plotly')
+    fig = fig2html(zz_amp_full, plot_type='image')
     # plt.close()
     
     #Obtain Power Spectral Density of data
@@ -772,14 +773,19 @@ def get_calib(df_on, df_off, T, lever_number, userid, password, datarange=(0,1))
     #                           'value': ftf.lorentzian(freq_fit_range, *popt)})
     # psd_df_all = pd.concat([psd_df_long, psd_df_fit])
     
-    fig = plotly_lineplot(data=psd_df_long, x="Frequency", y="PSD", color="name",
-                         color_discrete_sequence=['blue', 'skyblue', 'red'])#, 'yellow'])
-    plotly_dashedlines(plot_type='line',fig=fig, x=freq_fit_range, 
-                       y=ftf.lorentzian(freq_fit_range, *popt), line_width=2, name='fit')
-    fig.update_layout(legend_title=None)
+    # fig = plotly_lineplot(data=psd_df_long, x="Frequency", y="PSD", color="name",
+    #                      color_discrete_sequence=['blue', 'skyblue', 'red'])#, 'yellow'])
+    # plotly_dashedlines(plot_type='line',fig=fig, x=freq_fit_range, 
+    #                    y=ftf.lorentzian(freq_fit_range, *popt), line_width=2, name='fit')
+    # fig.update_layout(legend_title=None)
+
+    fig = seaborn_lineplot(data=psd_df_long, x="Frequency", y="PSD", color="name", 
+                           palette=['blue', 'skyblue', 'red'], line_width=3)
+    matplotlib_dashedlines(plot_type='line',fig=fig, x=freq_fit_range, 
+                           y=ftf.lorentzian(freq_fit_range, *popt), line_width=2, name='fit')
     # fig.data[-1].line.dash = 'dash'
     # plt.close()
-    fig_html = fig2html(fig, plot_type='plotly')
+    fig_html = fig2html(fig, plot_type='matplotlib')
     # print(fit_dict)
 
     # k_lever = kcant_sader_normal(width=cant_width, length=cant_length, Q_factor=fit_dict['Q factor'], 

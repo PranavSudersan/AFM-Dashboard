@@ -15,6 +15,7 @@ from openpyxl.drawing.image import Image as xlImage
 # from PIL import Image as PILImage
 from openpyxl.utils.dataframe import dataframe_to_rows
 import re
+import cv2
 
 #plot theme dictionary
 THEME_DICT={'dark': {'plotly':'plotly_dark',
@@ -61,7 +62,7 @@ def matplotlib_to_plotly(cmap_name, num=255, source='matplotlib', reverse=False)
     return pl_colorscale
 
 #initialize default colourmap "afmhot"
-cm_afmhot = matplotlib_to_plotly('afmhot', 255)
+cm_afmhot = matplotlib_to_plotly('afmhot', 255) #TODO: SET THIS in THEME_DICT
 
 #create colorscale values to insert a discrete colorbar
 def create_discrete_colorscale(n_values, colorlist):
@@ -457,10 +458,12 @@ def plotly_pairplot_initax(fig, num, font_dict=None):
                                                     )})
     return fig
 
-#eaborn's pairplot to plot relational xy data in a grid for all cols in data.
+#seaborn's pairplot to plot relational xy data in a grid for all cols in data.
 def seaborn_pairplot(data, cols=None, hue=None, diag_kind='kde', plot_kws=None, palette=None, #nbins = 50, 
                     font_dict=None, group_cols=None, line_style='lines+markers'):
     plt.style.use(THEME_DICT[THEME]['matplotlib'])#"dark_background")
+    if font_dict == None:
+        font_dict=dict(family='Arial',size=22)
     plt.rcParams["font.family"] = font_dict['family']
     plt.rcParams["font.size"] = font_dict['size']
     if palette == None:
@@ -470,6 +473,36 @@ def seaborn_pairplot(data, cols=None, hue=None, diag_kind='kde', plot_kws=None, 
     g = sns.pairplot(data, vars=cols, hue=hue, diag_kind=diag_kind, palette=color_list,
                      plot_kws=plot_kws)
     sns.move_legend(g, 'upper left', bbox_to_anchor=(0, 0))#, ncols=len(cols)-1)
+    g.figure.set_dpi(300)
+    
+    return g.figure
+
+#eaborn's lineplot 
+def seaborn_lineplot(data, x, y, color=None, line_group=None, line_dash=None, symbol=None, palette=None, 
+                     line_width=3, figsize=(8,6), font_dict=None, legend='auto'):
+                   #  height=400, width=500, font_dict=None, color_discrete_sequence=None, line_dash_sequence=None,
+                   # symbol_sequence=None):
+    plt.style.use(THEME_DICT[THEME]['matplotlib'])#"dark_background")
+    if font_dict == None:
+        font_dict=dict(family='Arial',size=22)
+    plt.rcParams["font.family"] = font_dict['family']
+    plt.rcParams["font.size"] = font_dict['size']
+    if palette == None:
+        color_list = THEME_DICT[THEME]['linecolor'][:len(data[color].unique())] #px.colors.qualitative.Plotly[:len(data[hue].unique())]
+    else:
+        color_list = palette
+
+    # g = sns.pairplot(data, vars=cols, hue=hue, diag_kind=diag_kind, palette=color_list,
+    #                  plot_kws=plot_kws)
+    fig, ax = plt.subplots(figsize=figsize)
+    g = sns.lineplot(data=data, x=x, y=y, hue=color, size=symbol, style=line_dash,
+                     palette=color_list, sort=False, ax=ax, linewidth=line_width, legend=legend)
+                         # hue_order=None, hue_norm=None, sizes=None, size_order=None, size_norm=None,
+                         # dashes=True, markers=None, style_order=None)
+    # sns.move_legend(g, 'upper left', bbox_to_anchor=(0, 0))#, ncols=len(cols)-1)
+    legend = g.get_legend()
+    if legend != None:
+        legend.set_title(None)
     g.figure.set_dpi(300)
     
     return g.figure
@@ -820,6 +853,60 @@ def fig2html(fig, plot_type, dpi=300, width=200, height=200, pad=0):
     elif plot_type == 'plotly':
         # buf = fig.to_image(width=size, height=size)
         image_base64 = base64.b64encode(fig.to_image()).decode('ascii')
+    elif plot_type == 'image':
+        # Normalize array to 0–1
+        arr_min, arr_max = fig.min(), fig.max()
+        normed = (fig - arr_min) / (arr_max - arr_min) if arr_max != arr_min else np.zeros_like(fig)
+    
+        # Apply matplotlib colormap (returns RGBA in float32)
+        cmap = matplotlib.cm.get_cmap('afmhot') #TODO: SET THIS in THEME_DICT
+        rgba_img = cmap(normed)[:, :, :3]  # drop alpha channel
+    
+        # Convert to uint8 for Pillow
+        rgb_uint8 = (rgba_img * 255).astype(np.uint8)
+        
+        buf = io.BytesIO()
+        PIL.Image.fromarray(rgb_uint8).save(buf, format='PNG')        
+        # img.save(buf, format='PNG')
+        # buf.seek(0)
+        image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8') #base64.b64encode(buf.read()).decode('utf-8')
+    elif plot_type == 'line':
+        linecolors = THEME_DICT[THEME]['linecolor']
+        size=(width, height)
+
+        datalist = []
+        for seg_i in fig['segment'].unique(): #TODO: change 'segment', 'x', 'y' more general, pass as arguments in function
+            spectrodf_filt_i = fig[fig['segment']==seg_i]
+            datalist.append((spectrodf_filt_i['x'],spectrodf_filt_i['y']))
+        x_min, x_max = fig['x'].min(), fig['x'].max()
+        y_min, y_max = fig['y'].min(), fig['y'].max()
+        x_min = 0 if x_max==x_min else x_min
+        y_min = 0 if y_max==y_min else y_min
+        if THEME == 'light':
+            img = np.ones((size[1], size[0], 3), dtype=np.uint8) * 255
+        elif THEME == 'dark':
+            img = np.zeros((size[1], size[0], 3), dtype=np.uint8) * 255
+        # Draw lines
+        for j, data_j in enumerate(datalist):
+            x, y = data_j[0], data_j[1]
+            # Normalize data to image coordinates            
+            x = np.array(x)
+            y = np.array(y)
+            line_color_j = tuple(int(linecolors[j].lstrip('#')[k:k+2], 16) for k in (0, 2, 4))
+            # Scale to image size
+            x_norm = ((x - x_min) / (x_max - x_min) * (size[0] - 1)).astype(np.int32)
+            y_norm = ((y - y_min) / (y_max - y_min) * (size[1] - 1)).astype(np.int32)
+            y_norm = size[1] - 1 - y_norm  # Invert y-axis for image
+            for i in range(1, len(x)):
+                pt1 = (x_norm[i - 1], y_norm[i - 1])
+                pt2 = (x_norm[i], y_norm[i])                
+                cv2.line(img, pt1, pt2, color=line_color_j, thickness=2)
+    
+        # Convert to PNG base64
+        pil_img = PIL.Image.fromarray(img)
+        buf = io.BytesIO()
+        pil_img.save(buf, format='PNG')
+        image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         
     # Convert the binary data to base64
     # image_base64 = base64.b64encode(buf.read()).decode('utf-8')    
@@ -844,6 +931,21 @@ def plotly_dashedlines(plot_type,fig, x=None, y=None, yaxis=None, visible=True,
         fig.add_vline(x=x, line_dash=line_dash, line_color=THEME_DICT[THEME]['fontcolor'], showlegend=False,
                       line_width=line_width, visible=visible)
     
+
+def matplotlib_dashedlines(plot_type, fig, x=None, y=None, #visible=True, 
+                           line_width=3, name=None, line_style='--'):
+    # if not visible:
+    #     return  # Matplotlib doesn't have a direct visibility toggle; just skip drawing
+    ax = fig.axes[0]
+    if plot_type == 'line':
+        ax.plot(x, y, linestyle=line_style, linewidth=line_width, color=THEME_DICT[THEME]['fontcolor'], label=name)
+    
+    elif plot_type == 'hline':
+        ax.axhline(y=y, linestyle=line_style, linewidth=line_width, color=THEME_DICT[THEME]['fontcolor'])#, label=name)
+    
+    elif plot_type == 'vline':
+        ax.axvline(x=x, linestyle=line_style, linewidth=line_width, color=THEME_DICT[THEME]['fontcolor'])#, label=name)
+
 
 def merge_plotly_figures(figures, layout):
     """

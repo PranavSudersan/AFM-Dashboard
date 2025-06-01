@@ -3,6 +3,8 @@ import os
 import re
 import numpy as np
 import datetime
+# import matplotlib
+# matplotlib.use('Agg')  # Headless backend
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -1270,10 +1272,11 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                             z_data_i = data_dict_chan_i['data']['Z']
                         # z_data_i = tsf.flatten_line(data_dict_chan_i['data'], order=1) #flatten topography
                         if make_plot == True:
-                            fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
-                                                            y=data_dict_chan_i['data']['Y'],
-                                                            z_mat=z_data_i, style='clean'), 
-                                             plot_type='plotly')
+                            # fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                            #                                 y=data_dict_chan_i['data']['Y'],
+                            #                                 z_mat=z_data_i, style='clean'), 
+                            #                  plot_type='plotly')
+                            fig_i = fig2html(z_data_i, plot_type='image')
                             # fig_i = pio.to_html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
                             #                                     y=data_dict_chan_i['data']['Y'],
                             #                                     z_mat=z_data_i, style='clean'), 
@@ -1307,9 +1310,15 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         if make_plot == True:
                             # g_i = plt.plot(spectrodf_i['x'], spectrodf_i['y']) #sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
                             # fig_i = fig2html(plt.gcf(), plot_type='matplotlib')
-                            g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
-                            fig_i = fig2html(g_i.figure, plot_type='matplotlib')
-                            plt.clf()
+                            
+                            # g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                            # fig_i = fig2html(g_i.figure, plot_type='matplotlib')
+                            # plt.clf()
+                            # datalist_i = []
+                            # for seg_i in spectrodf_i['segment'].unique():
+                            #     spectrodf_filt_i = spectrodf_i[spectrodf_i['segment']==seg_i]
+                            #     datalist_i.append((spectrodf_filt_i['x'],spectrodf_filt_i['y']))
+                            fig_i = fig2html(spectrodf_i, plot_type='line')
                             # fig_i = pio.to_html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"), 
                             #                     full_html=False, include_plotlyjs=False)
                         else:
@@ -1338,10 +1347,11 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         else:
                             z_data_i = data_dict_chan_i['data']['Z']
                         if make_plot == True:
-                            fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
-                                                            y=data_dict_chan_i['data']['Y'],
-                                                            z_mat=z_data_i, style='clean'), 
-                                             plot_type='plotly')
+                            # fig_i = fig2html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
+                            #                                 y=data_dict_chan_i['data']['Y'],
+                            #                                 z_mat=z_data_i, style='clean'), 
+                            #                  plot_type='plotly')
+                            fig_i = fig2html(z_data_i, plot_type='image')
                             # fig_i = pio.to_html(plotly_heatmap(x=data_dict_chan_i['data']['X'],
                             #                                 y=data_dict_chan_i['data']['Y'],
                             #                                 z_mat=z_data_i, style='clean'), 
@@ -1371,9 +1381,10 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         # z_min_i = spectrodf_i['y'].min()
                         # z_avg_i = spectrodf_i['y'].mean()
                         if make_plot == True:
-                            g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
-                            fig_i = fig2html(g_i.figure, plot_type='matplotlib')
-                            plt.clf()
+                            # g_i = sns.lineplot(data=spectrodf_i, x="x", y="y", hue="segment")
+                            # fig_i = fig2html(g_i.figure, plot_type='matplotlib')
+                            # plt.clf()
+                            fig_i = fig2html(spectrodf_i, plot_type='line')
                             # fig_i = pio.to_html(plotly_lineplot(data=spectrodf_i, x="x", y="y", color="segment"),
                             #                     full_html=False, include_plotlyjs=False)
                         else:
