@@ -145,13 +145,63 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
             trace_i.update_traces(yaxis=f'y{i+1}', #line_color=color_list[i] if color==None else None,
                                   showlegend=True if i == 0 else False,
                                   marker=dict(size=marker_size), line_width=line_width)
+        # print(trace_i.data)
         trace_namelist = []
         for j, trace_data_i in enumerate(trace_i.data):
+            # print(trace_data_i.name)
             trace_data_i.name = trace_data_i.name.split(",")[0] #show only first item as label
+            trace_data_i.legendgroup = trace_data_i.name
             if trace_data_i.name in trace_namelist:
                 trace_data_i.showlegend = False
             trace_namelist.append(trace_data_i.name)
             fig.add_trace(trace_data_i)
+
+
+            # Add error band
+            if yvars_i in errory_dict.keys():
+                data_i[f'error{i}'] = data[data[multiy_col]==errory_dict[yvars_i]][y].reset_index(drop=True)
+                filter_vars = []
+                if color != None:
+                    filter_vars.append(color)
+                    fillcolor_i = trace_data_i.line.color
+                else:
+                    fillcolor_i = color_list[i]
+                if line_group != None:
+                    filter_vars.append(line_group)
+                if line_dash != None:
+                    filter_vars.append(line_dash)
+                
+                # Regex to extract key=value pairs from hover text of trace
+                matches = re.findall(r'([\w\s]+)=(.*?)(?=<br>|<extra>|$)', trace_data_i.hovertemplate)
+                trace_vardict_i = {}
+                for key, value in matches:
+                    value = value.strip()
+                    if value.isdigit():
+                        value = int(value)
+                    trace_vardict_i[key.strip()] = value
+                
+                # filter data for the current trace data, including error data
+                data_i_filt = data_i.copy()
+                for filter_var_i in filter_vars:
+                    filter_values_i = trace_vardict_i[filter_var_i]
+                    data_i_filt = data_i_filt[data_i_filt[filter_var_i]==filter_values_i].reset_index(drop=True)
+
+                fig.add_traces([
+                    go.Scatter(
+                        x=np.concatenate([data_i_filt[x], data_i_filt[x][::-1]]),
+                        y=np.concatenate([data_i_filt[y] + data_i_filt[f'error{i}'], (data_i_filt[y] - data_i_filt[f'error{i}'])[::-1]]),
+                        yaxis=f'y{i+1}',
+                        fill='toself',
+                        fillcolor=fillcolor_i,#color_list[i],
+                        opacity=0.5,
+                        line=dict(color='rgba(255,255,255,0)'), #invisible
+                        hoverinfo="skip",
+                        showlegend=False,
+                        legendgroup = trace_data_i.name,
+                        name=f'Error band:{i},{j}'
+                    )
+                ])
+        
         if color == None:
             fig.update_layout({f'yaxis{i+1}': dict(linecolor=color_list[i],tickcolor=color_list[i],
                                                    titlefont_color=color_list[i],
@@ -160,25 +210,7 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
             yax_color = THEME_DICT[THEME]['fontcolor']
             fig.update_layout({f'yaxis{i+1}': dict(linecolor=yax_color,tickcolor=yax_color,
                                                    titlefont_color=yax_color,
-                                                   tickfont_color=yax_color)})
-
-        # Add error band
-        if yvars_i in errory_dict.keys():
-            data_i['error'] = data[data[multiy_col]==errory_dict[yvars_i]][y].reset_index(drop=True)
-            fig.add_traces([
-                go.Scatter(
-                    x=np.concatenate([data_i[x], data_i[x][::-1]]),
-                    y=np.concatenate([data_i[y] + data_i['error'], (data_i[y] - data_i['error'])[::-1]]),
-                    fill='toself',
-                    fillcolor=color_list[i],
-                    opacity=0.5,
-                    line=dict(color='rgba(255,255,255,0)'), #invisible
-                    hoverinfo="skip",
-                    showlegend=False,
-                    name='Error band'
-                )
-            ])
-        
+                                                   tickfont_color=yax_color)})        
         yax_dict[yvars_i] = f'y{i+1}'
         i += 1
     
@@ -198,13 +230,13 @@ def plotly_multiyplot(data, multiy_col, yvars, x, y, fig=None, yax_dict=None, li
     fig.update_layout(legend=dict(orientation="h",yanchor="top",y=-0.2,xanchor="center",x=0.5),
                       showlegend=False if color==None else True
                      )
-    #error bar formatting
-    for data_i in fig.data:
-        if data_i.error_y.array is not None:
-            C_i = matplotlib.colors.to_rgba(data_i.line.color, alpha=0.5)
-            c_rgba = 'rgba'+str((C_i[0], C_i[1], C_i[2], C_i[3]))
-            data_i.error_y.color = c_rgba
-            data_i.error_y.width = 0
+    # #error bar formatting
+    # for data_i in fig.data:
+    #     if data_i.error_y.array is not None:
+    #         C_i = matplotlib.colors.to_rgba(data_i.line.color, alpha=0.5)
+    #         c_rgba = 'rgba'+str((C_i[0], C_i[1], C_i[2], C_i[3]))
+    #         data_i.error_y.color = c_rgba
+    #         data_i.error_y.width = 0
     # else:
     #     pass
         # fig.update_layout(showlegend-False)

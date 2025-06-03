@@ -1365,7 +1365,7 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         filename_com_i = filename_i[:-4]
                         data_type_i = '1D'
                         # channel_i = 'Other'
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False)
+                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False, mute=True)
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Spectroscopy channel']                        
                         res_i = header_i['Number of points [General Info]']
