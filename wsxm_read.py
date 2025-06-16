@@ -127,9 +127,11 @@ def wsxm_readimg(file, header_dict, pos):
     # with open(filepath, 'rb') as file:
     file.seek(pos, 0)
     data_len = x_num*y_num*point_length
+    # print('a', data_len)
     bin_data = file.read(data_len)
     # print(data.read()[(x_num*y_num*point_length)+header_size:])
     ch_array = np.array(list(struct.iter_unpack(f'{type_code}', bin_data))).flatten()
+    # print('b', len(ch_array))
     #dac to volt conversion
     if chan_label == 'Topography': #ignore for topo
         chan_offs = 0
@@ -586,6 +588,7 @@ def wsxm_readspectra(filepath, all_files=False, extra_channels=False, mute=False
     for path in filepath_all:
         # print('yo', path, data_dict.keys())
         path_ext = os.path.splitext(path)[1] #file extension
+        # print(file_num, os.path.basename(path)) 
         if mute == False:
             print(file_num, os.path.basename(path)) 
         file_num += 1
@@ -1249,7 +1252,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         # channel_i = 'Topography' #only check topo image for force volume data
                         # feedback_i = ''
                         #Topo channel only taken for image display
-                        data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, extra_channels=False, topo_only=True, mute=True)
+                        try:
+                            data_dict_chan_i = wsxm_readforcevol(path_i, all_files=False, extra_channels=False, topo_only=True, mute=True)
+                        except Exception as e:
+                            print('Error in reading force volume file:', filename_i)
+                            print(e)
+                            continue
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Acquisition channel [General Info]']
                         # print(header_i)
@@ -1287,7 +1295,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         data_type_i = '1D'
                         # channel_i = filename_i[match_i.start()+6:].split('.')[0].split('_')[0]
                         # feedback_i = ''
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False, mute=True)
+                        try:
+                            data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False, mute=True)
+                        except Exception as e:
+                            print('Error in reading spectroscopy file:', filename_i)
+                            print(e)
+                            continue
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Spectroscopy channel']
                         spec_dir_i = list(data_dict_chan_i['data'].keys())
@@ -1328,8 +1341,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         data_type_i = '2D'
                         # channel_i = WSXM_CHANNEL_DICT[path_ext_i[1:]]
                         file_tags_i = filename_i[match_i.start()+6:].split('.')
-                        
-                        data_dict_chan_i = wsxm_readchan(path_i, all_files=False, extra_channels=False, mute=True)
+                        try:
+                            data_dict_chan_i = wsxm_readchan(path_i, all_files=False, extra_channels=False, mute=True)
+                        except Exception as e:
+                            print('Error in reading image file:', filename_i)
+                            print(e)
+                            continue
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Acquisition channel [General Info]']
                         res_i = header_i['Number of rows [General Info]'] + 'x' + header_i['Number of columns [General Info]']
@@ -1365,7 +1382,12 @@ def wsxm_collect_files(folderpath, refresh=False, flatten_chan=[], make_plot=Tru
                         filename_com_i = filename_i[:-4]
                         data_type_i = '1D'
                         # channel_i = 'Other'
-                        data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False, mute=True)
+                        try:
+                            data_dict_chan_i = wsxm_readspectra(path_i, all_files=False, extra_channels=False, mute=True)
+                        except Exception as e:
+                            print('Error in reading other .cur file:', filename_i)
+                            print(e)
+                            continue
                         header_i = data_dict_chan_i['header']
                         channel_i = header_i['Spectroscopy channel']                        
                         res_i = header_i['Number of points [General Info]']
