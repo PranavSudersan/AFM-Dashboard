@@ -134,6 +134,20 @@ def snapin(defl_data, segment, method, min_percentile, fit_order, back_pts, find
                 fit_x = np.append(fit_x_all, [snapin_x, snapin_x])
                 fit_y = np.append(fit_y_all, [snapin_y0, snapin_y1])
                 set_funcdict_kwargs(channel='Normal force',param='Stiffness',kwargs={'snapin_index': ind_min})
+
+                if back_pts > ind_min:
+                    back_pts = ind_min
+                if zero == 'max': #set method by which "zero deflection" point is estimated 
+                    zero_y =  data_y[ind_min:ind_min-back_pts:-1].max() #max of back_pts before index of high gradient
+                elif zero == 'mean':
+                    zero_y =  np.mean(data_y[ind_min:ind_min-back_pts:-1]) #mean of back_pts before index of high gradient
+                elif zero == 'median':
+                    zero_y =  np.median(data_y[ind_min:ind_min-back_pts:-1]) #median of back_pts before index of high gradient
+                elif zero == 'ini':
+                    zero_y = np.median(data_y[:back_pts]) #median of inital "back_pts" number of points of data_y, ignores normal deflection drift here unlike others
+                elif zero == 'drifted': #consider drift in normal signal CHECK for 'gradient' method
+                    zero_y = snapin_y1
+                
                 if 'd' in defl_data[segment].keys():
                     data_d = defl_data[segment]['d']
                     fit_d_all = np.linspace(data_d[0], data_d[ind_min], 100)
@@ -144,10 +158,10 @@ def snapin(defl_data, segment, method, min_percentile, fit_order, back_pts, find
                     snapin_z = data_z[ind_min]
                     fit_z = np.append(fit_z_all, [snapin_z, snapin_z])
                     return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'd':fit_d, 'z': fit_z, 
-                            'y': fit_y, 'index_min': ind_min, 'zero': snapin_y1} #TODO: ADD index_surf EVERYWHERE!
+                            'y': fit_y, 'index_min': ind_min, 'zero': zero_y} #TODO: ADD index_surf EVERYWHERE!
                 else:
                     return {'value': snapin_distance, 'segment': segment, 'x': fit_x, 'y': fit_y, 
-                            'index_min': ind_min, 'zero': snapin_y1}
+                            'index_min': ind_min, 'zero': zero_y}
     elif method == 'gradient':
         data_y_sobel = ndimage.sobel(data_y) #sobel transform
         ind_max = np.argmax(data_y_sobel)

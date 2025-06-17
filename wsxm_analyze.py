@@ -33,7 +33,7 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
                                                                    'fit_order': 2,
                                                                    'back_pts': 10,
                                                                    'findmax': True,
-                                                                   'zero': 'max' #'max', 'mean', 'median', 'ini'
+                                                                   'zero': 'max' #'max', 'mean', 'median', 'ini', 'driifted'
                                                                   },
                                                         'plot type': 'line',
                                                         'unit': '[Normal deflection]'
@@ -107,6 +107,7 @@ FUNC_DICT = {'Normal deflection': {'Snap-in distance': {'function': spf.snapin,
              'Phase': {},
              'True Phase': {},
              'Amplitude-sample distance': {},
+             'Tip position': {},
              'Sample deformation': {},
              'X-Y components': {},
              'Amplitude dissipated': {},
@@ -140,6 +141,9 @@ CALIB_DICT = {'Normal force': {'V': {'factor':1, 'offset':0},
                              '°': {'factor':180/np.pi, 'offset':0}
                             },
               'Amplitude-sample distance': {'V': {'factor':1, 'offset':0}, 
+                                            'nm': {'factor':1, 'offset':0}
+                                            },
+              'Tip position': {'V': {'factor':1, 'offset':0}, 
                                             'nm': {'factor':1, 'offset':0}
                                             },
               'Sample deformation': {'V': {'factor':1, 'offset':0}, 
@@ -363,6 +367,10 @@ def calc_tipsampledistance(spectro_data, defl_data, channel):
                     
         if channel == 'Amplitude-sample distance':
             spectro_data[key]['y'] = spectro_data[key]['d'] - np.absolute(spectro_data[key]['y'])
+        if channel == 'Tip position':
+            spectro_data[key]['y'] = spectro_data[key]['z'] + defl_data[key]['y']-snapin_output['zero']
+            # np.set_printoptions(threshold=np.inf)
+            # print(spectro_data[key]['d'], defl_data[key]['y'], snapin_output['zero'], defl_data[key]['y']-snapin_output['zero'], spectro_data[key]['y'])
     return spectro_data
                         
 #convert spectro data dictionary to dataframe for plotting

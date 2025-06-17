@@ -853,8 +853,10 @@ def wsxm_calc_extrachans(data_dict, data_type):
     if all(c in channels for c in ['Normal deflection', 'Amplitude']) == True and data_type in ['1D', '3D']:
         if 'True Amplitude' in channels: #choose true amplitude channel if it exists. Otherwise use Amplitude channel (NOT RELIABLE!)
             data_dict['Amplitude-sample distance'] = dict(data_dict['True Amplitude'])
+            data_dict['Tip position'] = dict(data_dict['True Amplitude'])
         else:
             data_dict['Amplitude-sample distance'] = dict(data_dict['Amplitude'])
+            data_dict['Tip position'] = dict(data_dict['Amplitude'])
     #add channel showing sample deformation
     if 'Normal deflection' in channels and data_type in ['1D', '3D']:
         data_dict['Sample deformation'] = dict(data_dict['Normal deflection'])
